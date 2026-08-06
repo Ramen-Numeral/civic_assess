@@ -1,0 +1,5 @@
+pydantic-settings
+langchain-groq
+langchain-openai
+langchain-anthropic
+pytest
