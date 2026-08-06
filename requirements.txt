@@ -3,3 +3,5 @@ langchain-groq
 langchain-openai
 langchain-anthropic
 pytest
+fastapi
+langgraph==1.2.9
