@@ -8,6 +8,7 @@ from app.observability.context import current_run_id
 
 STANDARD_FIELDS = frozenset(logging.makeLogRecord({}).__dict__)
 HANDLER_NAME = "civic_assess"
+QUIET_LOGGERS = ("anthropic", "asyncio", "groq", "httpcore", "httpx", "openai")
 
 
 class JsonFormatter(logging.Formatter):
@@ -44,6 +45,8 @@ class JsonFormatter(logging.Formatter):
 def configure_logging(*, debug: bool) -> None:
     root = logging.getLogger()
     root.setLevel(logging.DEBUG if debug else logging.INFO)
+    for name in QUIET_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
     handler = next(
         (item for item in root.handlers if item.get_name() == HANDLER_NAME),
         None,

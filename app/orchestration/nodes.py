@@ -12,6 +12,8 @@ from app.features.query_reframe.service import (
     QueryReframeService,
     determine_reframe_mode,
 )
+from app.features.query_resolution.schemas import QueryResolutionRequest
+from app.features.query_resolution.service import QueryResolutionService
 from app.orchestration.instrumentation import AgentNode, log_route
 from app.orchestration.state import ChatRoute, ChatState
 
@@ -34,8 +36,10 @@ def build_input_validation_node(
         query = (
             proposal.proposed_query
             if proposal is not None
-            else state["normalized_request"]
+            else state["query_resolution"].resolved_query
         )
+        if query is None:
+            raise RuntimeError("Input validation requires a resolved query")
         try:
             result = await service.validate(InputValidationRequest(query=query))
         except InputValidationError as exc:
@@ -74,6 +78,28 @@ def build_input_validation_node(
         return update
 
     return validate_input
+
+
+def build_query_resolution_node(
+    service: QueryResolutionService,
+) -> AgentNode[ChatState]:
+    async def resolve_query(state: ChatState) -> dict[str, object]:
+        result = await service.resolve(
+            QueryResolutionRequest(
+                normalized_query=state["normalized_request"],
+                recent_turns=state.get("recent_turns", ()),
+            )
+        )
+        if result.clarification_question is not None:
+            route = ChatRoute.AWAIT_CLARIFICATION
+            log_route(route, "context_ambiguous")
+            return {
+                "query_resolution": result,
+                "chat_route": route,
+            }
+        return {"query_resolution": result}
+
+    return resolve_query
 
 
 def build_query_reframe_node(
