@@ -3,6 +3,8 @@ import logging
 import traceback
 from datetime import UTC, datetime
 
+from app.observability.context import current_run_id
+
 
 STANDARD_FIELDS = frozenset(logging.makeLogRecord({}).__dict__)
 HANDLER_NAME = "civic_assess"
@@ -21,6 +23,8 @@ class JsonFormatter(logging.Formatter):
             for key, value in record.__dict__.items()
             if key not in STANDARD_FIELDS
         })
+        if run_id := current_run_id():
+            payload["run_id"] = run_id
         if record.exc_info:
             exception_type, _, exception_traceback = record.exc_info
             payload["exception"] = {
