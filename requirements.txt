@@ -1,4 +1,7 @@
 pydantic-settings
+anthropic
+groq
+openai
 langchain-groq
 langchain-openai
 langchain-anthropic

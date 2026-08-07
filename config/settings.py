@@ -5,43 +5,17 @@ from pathlib import Path
 from typing import Literal
 
 from dotenv import dotenv_values
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.roles import AgentRole, ModelProvider
+from app.roles import AgentRole
+from config.llm import ModelCandidate, ModelProvider, Routes
 
 
 Environment = Literal["development", "test", "production"]
 ROOT = Path(__file__).resolve().parents[1]
 ENV_DIR = ROOT / "env"
 CONFIG_DIR = ROOT / "config" / "environments"
-
-
-class ModelCandidate(BaseModel):
-    provider: ModelProvider
-    model: str
-    temperature: float = Field(ge=0, le=2)
-    timeout_seconds: float = Field(gt=0)
-    max_retries: int = Field(ge=0, le=10)
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    @field_validator("model")
-    @classmethod
-    def nonblank_model(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("model must not be blank")
-        return value
-
-    @model_validator(mode="after")
-    def provider_limits(self) -> "ModelCandidate":
-        if self.provider is ModelProvider.GROQ and self.temperature > 1:
-            raise ValueError("Groq temperature must be between 0 and 1")
-        return self
-
-
-ModelRoute = tuple[ModelCandidate, ...]
-Routes = Mapping[AgentRole, ModelRoute]
 
 
 class Settings(BaseSettings):

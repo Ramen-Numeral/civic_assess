@@ -4,7 +4,7 @@ from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
-from config.settings import ModelCandidate
+from config.llm import ModelCandidate
 
 
 def _args(candidate: ModelCandidate, credential: SecretStr) -> dict:

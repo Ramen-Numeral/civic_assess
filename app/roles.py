@@ -9,9 +9,3 @@ class AgentRole(StrEnum):
     CRITIC = "critic"
     REWRITER = "rewriter"
     USER_FACING = "user_facing"
-
-
-class ModelProvider(StrEnum):
-    GROQ = "groq"
-    OPENAI = "openai"
-    ANTHROPIC = "anthropic"

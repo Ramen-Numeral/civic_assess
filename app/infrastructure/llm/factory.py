@@ -2,9 +2,10 @@ from collections.abc import Mapping
 from types import MappingProxyType
 
 from config.settings import Settings
+from config.llm import ModelProvider
 from app.infrastructure.llm.adapters import AnthropicAdapter, GroqAdapter, OpenAIAdapter
-from app.infrastructure.llm.client import LLM
-from app.roles import AgentRole, ModelProvider
+from app.infrastructure.llm.client import LLM, RoutedModel
+from app.roles import AgentRole
 
 
 ADAPTERS = MappingProxyType({
@@ -19,11 +20,14 @@ def build_llms(settings: Settings) -> Mapping[AgentRole, LLM]:
     for role in AgentRole:
         route = settings.routes[role]
         models = [
-            ADAPTERS[item.provider].build(
-                item,
-                settings.provider_credentials[item.provider],
+            RoutedModel(
+                candidate=item,
+                client=ADAPTERS[item.provider].build(
+                    item,
+                    settings.provider_credentials[item.provider],
+                ),
             )
             for item in route
         ]
-        clients[role] = LLM(models)
+        clients[role] = LLM(role, models)
     return MappingProxyType(clients)
