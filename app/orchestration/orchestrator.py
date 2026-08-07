@@ -1,0 +1,31 @@
+from app.features.input_validation.schemas import InputValidationRequest
+from app.features.input_validation.service import InputValidationService
+from app.features.query_reframe.service import QueryReframeService
+from app.observability.progress import (
+    NoOpProgressReporter,
+    ProgressEmitter,
+    ProgressReporter,
+)
+from app.orchestration.graph import build_chat_graph
+from app.orchestration.state import ChatState
+
+
+class ChatOrchestrator:
+    def __init__(
+        self,
+        input_validation: InputValidationService,
+        query_reframe: QueryReframeService,
+        reporter: ProgressReporter | None = None,
+    ) -> None:
+        self._emitter = ProgressEmitter(reporter or NoOpProgressReporter())
+        self._graph = build_chat_graph(
+            input_validation,
+            query_reframe,
+            self._emitter,
+        )
+
+    async def invoke(self, request: InputValidationRequest) -> ChatState:
+        async with self._emitter.run():
+            return await self._graph.ainvoke(
+                {"original_request": request.query}
+            )
