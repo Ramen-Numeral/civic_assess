@@ -45,3 +45,11 @@ def build_query_resolution_prompt() -> Prompt:
         description="Resolve conversational references in a user query.",
         template_path=PROMPT_DIR / "query_resolution.md",
     )
+
+
+def build_query_diversification_prompt() -> Prompt:
+    return Prompt(
+        name="query_diversification",
+        description="Generate intent-preserving diversified research queries.",
+        template_path=PROMPT_DIR / "query_diversification.md",
+    )

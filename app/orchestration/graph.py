@@ -3,6 +3,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from app.domain.validation import Disposition
 from app.features.input_validation.service import InputValidationService
+from app.features.query_diversification.service import QueryDiversificationService
 from app.features.query_reframe.service import QueryReframeService
 from app.features.query_resolution.service import QueryResolutionService
 from app.observability.progress import ProgressEmitter
@@ -10,6 +11,7 @@ from app.orchestration.instrumentation import AgentNode, instrument_node, log_ro
 from app.orchestration.nodes import (
     build_input_preflight_node,
     build_input_validation_node,
+    build_query_diversification_node,
     build_query_reframe_node,
     build_query_resolution_node,
 )
@@ -21,6 +23,7 @@ def build_chat_graph(
     input_validation: InputValidationService,
     query_reframe: QueryReframeService,
     query_resolution: QueryResolutionService,
+    query_diversification: QueryDiversificationService,
     emitter: ProgressEmitter,
 ) -> CompiledStateGraph:
     graph = StateGraph(ChatState)
@@ -30,6 +33,13 @@ def build_chat_graph(
         "query_resolution",
         AgentRole.QUERY_RESOLVER,
         build_query_resolution_node(query_resolution),
+        emitter,
+    )
+    _add_observed_node(
+        graph,
+        "query_diversification",
+        AgentRole.QUERY_DIVERSIFIER,
+        build_query_diversification_node(query_diversification),
         emitter,
     )
     _add_observed_node(
@@ -56,8 +66,13 @@ def build_chat_graph(
     graph.add_conditional_edges(
         "input_validation",
         _route_after_input_validation,
-        {"query_reframe": "query_reframe", "end": END},
+        {
+            "query_diversification": "query_diversification",
+            "query_reframe": "query_reframe",
+            "end": END,
+        },
     )
+    graph.add_edge("query_diversification", END)
     graph.add_conditional_edges(
         "query_reframe",
         _route_after_query_reframe,
@@ -89,7 +104,12 @@ def _route_after_input_validation(state: ChatState) -> str:
         Disposition.REDIRECT: "original_out_of_scope",
         Disposition.REFUSE: "original_refused",
     }
-    route = "query_reframe" if disposition is Disposition.REFRAME else "end"
+    if disposition is Disposition.ALLOW:
+        route = "query_diversification"
+    elif disposition is Disposition.REFRAME:
+        route = "query_reframe"
+    else:
+        route = "end"
     log_route(
         route,
         reasons[disposition],

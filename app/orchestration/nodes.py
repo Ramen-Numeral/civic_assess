@@ -1,4 +1,6 @@
 from app.domain.validation import Disposition
+from app.features.query_diversification.schemas import QueryDiversificationRequest
+from app.features.query_diversification.service import QueryDiversificationService
 from app.features.input_validation.errors import InputValidationError
 from app.features.input_validation.preflight import preflight_input
 from app.features.input_validation.schemas import InputValidationRequest
@@ -100,6 +102,20 @@ def build_query_resolution_node(
         return {"query_resolution": result}
 
     return resolve_query
+
+
+def build_query_diversification_node(
+    service: QueryDiversificationService,
+) -> AgentNode[ChatState]:
+    async def diversify_query(state: ChatState) -> dict[str, object]:
+        result = await service.diversify(
+            QueryDiversificationRequest(
+                validated_query=state["gate_result"].normalized_query,
+            )
+        )
+        return {"research_query_set": result}
+
+    return diversify_query
 
 
 def build_query_reframe_node(
