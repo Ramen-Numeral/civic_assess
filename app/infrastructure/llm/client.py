@@ -96,7 +96,10 @@ class LLM:
                     ),
                 )
                 if not fallback:
-                    raise
+                    raise LLMError(
+                        "Model invocation failed",
+                        tuple(failures),
+                    ) from exc
                 last_error = exc
                 if index + 1 < len(self.models):
                     LOGGER.warning(
