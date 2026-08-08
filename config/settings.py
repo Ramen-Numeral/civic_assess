@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     environment: Environment
     debug: bool = False
     sqlite_database_path: Path = DEFAULT_SQLITE_DATABASE_PATH
+    conversation_ttl_minutes: int = Field(default=120, ge=1, le=10_080)
     conversation_turn_retention: int = Field(default=8, ge=1, le=50)
     diversified_research_query_count: int = Field(default=4, ge=3, le=5)
     max_research_rounds: int = Field(default=2, ge=1, le=5)
@@ -86,6 +87,7 @@ def load_application_config(
         sqlite_database_path=resolve_database_path(
             values.get("SQLITE_DATABASE_PATH", "data/civic_assess.sqlite3")
         ),
+        conversation_ttl_minutes=values.get("CONVERSATION_TTL_MINUTES", 120),
         conversation_turn_retention=values.get("CONVERSATION_TURN_RETENTION", 8),
         diversified_research_query_count=values.get(
             "DIVERSIFIED_RESEARCH_QUERY_COUNT",
