@@ -1,7 +1,12 @@
 from typing import Literal
 
 
-ConversationStateErrorCode = Literal["summarizer_unavailable"]
+ConversationStateErrorCode = Literal[
+    "summarizer_unavailable",
+    "raw_turn_ingestion_disabled",
+    "invalid_conversation_history",
+    "state_write_conflict",
+]
 
 
 class ConversationStateError(ValueError):

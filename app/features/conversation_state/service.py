@@ -29,6 +29,10 @@ class ConversationStateService:
         self._prompt = prompt
         self._raw_turn_count = raw_turn_count
 
+    @property
+    def raw_turn_count(self) -> int:
+        return self._raw_turn_count
+
     async def summarize(
         self,
         request: ConversationSummaryRequest,

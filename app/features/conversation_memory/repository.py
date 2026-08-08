@@ -24,6 +24,20 @@ class AppendUserTurnResult:
     turn: StoredConversationTurn | None = None
 
 
+class StateWriteStatus(StrEnum):
+    CREATED = "created"
+    UPDATED = "updated"
+    CONFLICT = "conflict"
+    MISSING = "missing"
+    INVALID_WATERMARK = "invalid_watermark"
+
+
+@dataclass(frozen=True)
+class StateWriteResult:
+    status: StateWriteStatus
+    state: ConversationStateSnapshot | None = None
+
+
 class ConversationRepository(Protocol):
     async def create_conversation(
         self,
@@ -41,6 +55,13 @@ class ConversationRepository(Protocol):
         self,
         conversation_id: UUID,
     ) -> ConversationStateSnapshot | None: ...
+
+    async def write_conversation_state(
+        self,
+        snapshot: ConversationStateSnapshot,
+        *,
+        expected_revision: int | None,
+    ) -> StateWriteResult: ...
 
     async def append_user_turn(
         self,

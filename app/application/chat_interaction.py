@@ -8,7 +8,9 @@ from pydantic import BaseModel, ConfigDict
 
 from app.domain.conversation import Conversation, StoredConversationTurn
 from app.features.conversation_context import ConversationContextService
+from app.features.conversation_context.errors import ContextCatchUpRequiredError
 from app.features.conversation_memory import ConversationService
+from app.features.conversation_state import ConversationStateCoordinator
 from app.features.input_validation.schemas import InputValidationRequest
 from app.orchestration.orchestrator import ChatOrchestrator
 from app.orchestration.state import ChatState
@@ -65,10 +67,13 @@ class ChatInteractionService:
         conversations: ConversationService,
         contexts: ConversationContextService,
         orchestrator: ChatOrchestrator,
+        *,
+        state_coordinator: ConversationStateCoordinator | None = None,
     ) -> None:
         self._conversations = conversations
         self._contexts = contexts
         self._orchestrator = orchestrator
+        self._state_coordinator = state_coordinator
         self._locks = _ConversationLocks()
 
     async def create_conversation(self) -> Conversation:
@@ -84,10 +89,22 @@ class ChatInteractionService:
                 client_message_id=request.client_message_id,
                 content=request.message,
             )
-            context = await self._contexts.load(
-                conversation_id=request.conversation_id,
-                current_turn_id=user_turn.turn_id,
-            )
+            try:
+                context = await self._contexts.load(
+                    conversation_id=request.conversation_id,
+                    current_turn_id=user_turn.turn_id,
+                )
+            except ContextCatchUpRequiredError:
+                if self._state_coordinator is None:
+                    raise
+                await self._state_coordinator.catch_up(
+                    conversation_id=request.conversation_id,
+                    before_sequence=user_turn.sequence_number,
+                )
+                context = await self._contexts.load(
+                    conversation_id=request.conversation_id,
+                    current_turn_id=user_turn.turn_id,
+                )
             state = await self._orchestrator.invoke(
                 InputValidationRequest(query=user_turn.content),
                 conversation_context=context,

@@ -5,6 +5,7 @@ from app.domain.conversation import (
     ConversationContext,
     ConversationContextStatus,
     ConversationRole,
+    StoredConversationTurn,
 )
 from app.features.conversation_context.errors import (
     ContextCatchUpRequiredError,
@@ -49,8 +50,10 @@ class ConversationContextService:
             turns = await self._repository.list_turns(
                 conversation_id,
                 before_sequence=current_turn.sequence_number,
-                limit=self._turn_retention,
+                limit=self._turn_retention + 1,
             )
+            if self._requires_catch_up(turns):
+                raise ContextCatchUpRequiredError()
             return ConversationContext(
                 conversation_id=conversation_id,
                 current_turn_id=current_turn_id,
@@ -65,11 +68,7 @@ class ConversationContextService:
             after_sequence=state.summary_through_sequence,
             before_sequence=current_turn.sequence_number,
         )
-        if (
-            len(turns) > self._turn_retention
-            or sum(len(turn.content) for turn in turns)
-            > CONVERSATION_CONTEXT_CHARACTER_LIMIT
-        ):
+        if self._requires_catch_up(turns):
             raise ContextCatchUpRequiredError()
         return ConversationContext(
             conversation_id=conversation_id,
@@ -77,4 +76,14 @@ class ConversationContextService:
             recent_turns=turns,
             state=state,
             status=ConversationContextStatus.COMPLETE,
+        )
+
+    def _requires_catch_up(
+        self,
+        turns: tuple[StoredConversationTurn, ...],
+    ) -> bool:
+        return (
+            len(turns) > self._turn_retention
+            or sum(len(turn.content) for turn in turns)
+            > CONVERSATION_CONTEXT_CHARACTER_LIMIT
         )

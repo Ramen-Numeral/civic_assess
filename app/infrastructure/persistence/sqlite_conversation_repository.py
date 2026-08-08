@@ -14,6 +14,8 @@ from app.features.conversation_memory.repository import (
     AppendUserTurnResult,
     AppendUserTurnStatus,
     ConversationRepository,
+    StateWriteResult,
+    StateWriteStatus,
 )
 from app.infrastructure.persistence.sqlite import SQLiteDatabase
 
@@ -41,6 +43,18 @@ class SQLiteConversationRepository(ConversationRepository):
         return await asyncio.to_thread(
             self._get_conversation_state,
             conversation_id,
+        )
+
+    async def write_conversation_state(
+        self,
+        snapshot: ConversationStateSnapshot,
+        *,
+        expected_revision: int | None,
+    ) -> StateWriteResult:
+        return await asyncio.to_thread(
+            self._write_conversation_state,
+            snapshot,
+            expected_revision,
         )
 
     async def append_user_turn(
@@ -135,6 +149,106 @@ class SQLiteConversationRepository(ConversationRepository):
                 (str(conversation_id),),
             ).fetchone()
         return _state(row) if row is not None else None
+
+    def _write_conversation_state(
+        self,
+        snapshot: ConversationStateSnapshot,
+        expected_revision: int | None,
+    ) -> StateWriteResult:
+        with self._database.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            conversation_id = str(snapshot.conversation_id)
+            conversation = connection.execute(
+                "SELECT 1 FROM conversations WHERE conversation_id = ?",
+                (conversation_id,),
+            ).fetchone()
+            if conversation is None:
+                return StateWriteResult(StateWriteStatus.MISSING)
+
+            current_row = connection.execute(
+                "SELECT * FROM conversation_state WHERE conversation_id = ?",
+                (conversation_id,),
+            ).fetchone()
+            if expected_revision is None:
+                if current_row is not None:
+                    return StateWriteResult(StateWriteStatus.CONFLICT)
+            elif (
+                current_row is None
+                or current_row["revision"] != expected_revision
+            ):
+                return StateWriteResult(StateWriteStatus.CONFLICT)
+
+            current_revision = (
+                int(current_row["revision"])
+                if current_row is not None
+                else 0
+            )
+            if snapshot.revision != current_revision + 1:
+                return StateWriteResult(StateWriteStatus.CONFLICT)
+
+            current_watermark = (
+                int(current_row["summary_through_sequence"])
+                if current_row is not None
+                else 0
+            )
+            latest_turn = connection.execute(
+                "SELECT MAX(sequence_number) AS sequence_number FROM turns "
+                "WHERE conversation_id = ?",
+                (conversation_id,),
+            ).fetchone()
+            latest_sequence = latest_turn["sequence_number"]
+            if (
+                snapshot.summary_through_sequence <= current_watermark
+                or latest_sequence is None
+                or snapshot.summary_through_sequence > latest_sequence
+            ):
+                return StateWriteResult(StateWriteStatus.INVALID_WATERMARK)
+
+            values = (
+                str(snapshot.state_id),
+                snapshot.summary_through_sequence,
+                snapshot.revision,
+                snapshot.summarizer_version,
+                snapshot.current_goal,
+                json.dumps(snapshot.confirmed_decisions, ensure_ascii=False),
+                json.dumps(snapshot.rejected_proposals, ensure_ascii=False),
+                json.dumps(snapshot.superseded_decisions, ensure_ascii=False),
+                json.dumps(snapshot.active_constraints, ensure_ascii=False),
+                json.dumps(snapshot.open_questions, ensure_ascii=False),
+                json.dumps(snapshot.important_corrections, ensure_ascii=False),
+                snapshot.summary,
+                snapshot.updated_at.isoformat(),
+            )
+            if current_row is None:
+                connection.execute(
+                    "INSERT INTO conversation_state "
+                    "(state_id, conversation_id, summary_through_sequence, "
+                    "revision, summarizer_version, current_goal, "
+                    "confirmed_decisions, rejected_proposals, "
+                    "superseded_decisions, active_constraints, open_questions, "
+                    "important_corrections, summary, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (values[0], conversation_id, *values[1:]),
+                )
+                status = StateWriteStatus.CREATED
+            else:
+                connection.execute(
+                    "UPDATE conversation_state SET state_id = ?, "
+                    "summary_through_sequence = ?, revision = ?, "
+                    "summarizer_version = ?, current_goal = ?, "
+                    "confirmed_decisions = ?, rejected_proposals = ?, "
+                    "superseded_decisions = ?, active_constraints = ?, "
+                    "open_questions = ?, important_corrections = ?, summary = ?, "
+                    "updated_at = ? WHERE conversation_id = ?",
+                    (*values, conversation_id),
+                )
+                status = StateWriteStatus.UPDATED
+
+            persisted = connection.execute(
+                "SELECT * FROM conversation_state WHERE conversation_id = ?",
+                (conversation_id,),
+            ).fetchone()
+            return StateWriteResult(status, _state(persisted))
 
     def _append_user_turn(
         self,

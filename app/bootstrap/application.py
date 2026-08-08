@@ -5,6 +5,10 @@ from config.settings import Settings, load_application_config
 from app.application import ChatInteractionService
 from app.features.conversation_context import ConversationContextService
 from app.features.conversation_memory import ConversationService
+from app.features.conversation_state import (
+    ConversationStateCoordinator,
+    ConversationStateService,
+)
 from app.features.input_validation.service import InputValidationService
 from app.features.query_diversification.service import QueryDiversificationService
 from app.features.query_reframe.service import QueryReframeService
@@ -18,6 +22,7 @@ from app.infrastructure.persistence import (
 from app.observability.logging import configure_logging
 from app.orchestration.orchestrator import ChatOrchestrator
 from app.prompts.factory import (
+    build_conversation_state_prompt,
     build_input_validation_prompt,
     build_query_diversification_prompt,
     build_query_reframe_prompts,
@@ -52,6 +57,17 @@ def build_application(settings: Settings | None = None) -> Application:
         turn_retention=resolved.conversation_turn_retention,
     )
     llms = build_llms(resolved)
+    conversation_state = ConversationStateService(
+        llm=llms[AgentRole.CONVERSATION_SUMMARIZER],
+        prompt=build_conversation_state_prompt(),
+        raw_turn_count=resolved.conversation_summarizer_raw_turn_count,
+    )
+    state_coordinator = ConversationStateCoordinator(
+        conversation_repository,
+        conversations,
+        conversation_state,
+        turn_retention=resolved.conversation_turn_retention,
+    )
     orchestrator = ChatOrchestrator(
         InputValidationService(
             llm=llms[AgentRole.VALIDATOR],
@@ -75,6 +91,7 @@ def build_application(settings: Settings | None = None) -> Application:
         conversations,
         conversation_contexts,
         orchestrator,
+        state_coordinator=state_coordinator,
     )
     return Application(
         settings=resolved,
