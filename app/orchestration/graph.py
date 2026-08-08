@@ -6,6 +6,7 @@ from app.features.input_validation.service import InputValidationService
 from app.features.query_diversification.service import QueryDiversificationService
 from app.features.query_reframe.service import QueryReframeService
 from app.features.query_resolution.service import QueryResolutionService
+from app.features.research_acquisition.service import ResearchAcquisitionService
 from app.observability.progress import ProgressEmitter
 from app.orchestration.instrumentation import AgentNode, instrument_node, log_route
 from app.orchestration.nodes import (
@@ -14,6 +15,7 @@ from app.orchestration.nodes import (
     build_query_diversification_node,
     build_query_reframe_node,
     build_query_resolution_node,
+    build_research_acquisition_node,
 )
 from app.orchestration.state import ChatState
 from app.roles import AgentRole
@@ -25,6 +27,7 @@ def build_chat_graph(
     query_resolution: QueryResolutionService,
     query_diversification: QueryDiversificationService,
     emitter: ProgressEmitter,
+    research_acquisition: ResearchAcquisitionService | None = None,
 ) -> CompiledStateGraph:
     graph = StateGraph(ChatState)
     graph.add_node("input_preflight", build_input_preflight_node())
@@ -72,7 +75,15 @@ def build_chat_graph(
             "end": END,
         },
     )
-    graph.add_edge("query_diversification", END)
+    if research_acquisition is None:
+        graph.add_edge("query_diversification", END)
+    else:
+        graph.add_node(
+            "research_acquisition",
+            build_research_acquisition_node(research_acquisition),
+        )
+        graph.add_edge("query_diversification", "research_acquisition")
+        graph.add_edge("research_acquisition", END)
     graph.add_conditional_edges(
         "query_reframe",
         _route_after_query_reframe,

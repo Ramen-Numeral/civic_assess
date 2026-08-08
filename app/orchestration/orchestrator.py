@@ -4,6 +4,7 @@ from app.features.input_validation.service import InputValidationService
 from app.features.query_diversification.service import QueryDiversificationService
 from app.features.query_reframe.service import QueryReframeService
 from app.features.query_resolution.service import QueryResolutionService
+from app.features.research_acquisition.service import ResearchAcquisitionService
 from app.observability.progress import (
     NoOpProgressReporter,
     ProgressEmitter,
@@ -21,6 +22,8 @@ class ChatOrchestrator:
         query_resolution: QueryResolutionService,
         query_diversification: QueryDiversificationService,
         reporter: ProgressReporter | None = None,
+        *,
+        research_acquisition: ResearchAcquisitionService | None = None,
     ) -> None:
         self._emitter = ProgressEmitter(reporter or NoOpProgressReporter())
         self._graph = build_chat_graph(
@@ -29,6 +32,7 @@ class ChatOrchestrator:
             query_resolution,
             query_diversification,
             self._emitter,
+            research_acquisition=research_acquisition,
         )
 
     async def invoke(

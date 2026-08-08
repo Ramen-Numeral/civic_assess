@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     conversation_turn_retention: int = Field(default=8, ge=1, le=50)
     conversation_summarizer_raw_turn_count: int = Field(default=6, ge=0, le=50)
     diversified_research_query_count: int = Field(default=4, ge=3, le=5)
+    research_results_per_query: int = Field(default=5, ge=1, le=5)
+    tavily_timeout_seconds: float = Field(default=20, gt=0, le=60)
+    tavily_api_key: SecretStr | None = None
     routes: Routes
     provider_credentials: Mapping[ModelProvider, SecretStr]
 
@@ -81,6 +84,7 @@ def load_application_config(
         if not secret.strip():
             raise ValueError(f"Missing credential for active provider {provider}")
         credentials[provider] = SecretStr(secret)
+    tavily_key = str(values.get("TAVILY_API_KEY", "")).strip()
     return Settings(
         environment=selected,
         debug=values.get("DEBUG", False),
@@ -97,6 +101,12 @@ def load_application_config(
             "DIVERSIFIED_RESEARCH_QUERY_COUNT",
             4,
         ),
+        research_results_per_query=values.get(
+            "RESEARCH_RESULTS_PER_QUERY",
+            5,
+        ),
+        tavily_timeout_seconds=values.get("TAVILY_TIMEOUT_SECONDS", 20),
+        tavily_api_key=SecretStr(tavily_key) if tavily_key else None,
         routes=routes,
         provider_credentials=credentials,
     )

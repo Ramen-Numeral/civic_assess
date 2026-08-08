@@ -13,12 +13,14 @@ from app.features.input_validation.service import InputValidationService
 from app.features.query_diversification.service import QueryDiversificationService
 from app.features.query_reframe.service import QueryReframeService
 from app.features.query_resolution.service import QueryResolutionService
+from app.features.research_acquisition.service import ResearchAcquisitionService
 from app.infrastructure.llm.client import LLM
 from app.infrastructure.llm.factory import build_llms
 from app.infrastructure.persistence import (
     SQLiteConversationRepository,
     SQLiteDatabase,
 )
+from app.infrastructure.search import TavilySearchClient
 from app.observability.logging import configure_logging
 from app.orchestration.orchestrator import ChatOrchestrator
 from app.prompts.factory import (
@@ -68,6 +70,17 @@ def build_application(settings: Settings | None = None) -> Application:
         conversation_state,
         turn_retention=resolved.conversation_turn_retention,
     )
+    research_acquisition = (
+        ResearchAcquisitionService(
+            TavilySearchClient(
+                api_key=resolved.tavily_api_key.get_secret_value(),
+                timeout_seconds=resolved.tavily_timeout_seconds,
+            ),
+            results_per_query=resolved.research_results_per_query,
+        )
+        if resolved.tavily_api_key is not None
+        else None
+    )
     orchestrator = ChatOrchestrator(
         InputValidationService(
             llm=llms[AgentRole.VALIDATOR],
@@ -86,6 +99,7 @@ def build_application(settings: Settings | None = None) -> Application:
             prompt=build_query_diversification_prompt(),
             query_count=resolved.diversified_research_query_count,
         ),
+        research_acquisition=research_acquisition,
     )
     chat_interactions = ChatInteractionService(
         conversations,

@@ -16,6 +16,7 @@ from app.features.query_reframe.service import (
 )
 from app.features.query_resolution.schemas import QueryResolutionRequest
 from app.features.query_resolution.service import QueryResolutionService
+from app.features.research_acquisition.service import ResearchAcquisitionService
 from app.orchestration.instrumentation import AgentNode, log_route
 from app.orchestration.state import ChatRoute, ChatState
 
@@ -116,6 +117,16 @@ def build_query_diversification_node(
         return {"research_query_set": result}
 
     return diversify_query
+
+
+def build_research_acquisition_node(
+    service: ResearchAcquisitionService,
+) -> AgentNode[ChatState]:
+    async def acquire_research(state: ChatState) -> dict[str, object]:
+        result = await service.acquire(state["research_query_set"])
+        return {"research_acquisition": result}
+
+    return acquire_research
 
 
 def build_query_reframe_node(

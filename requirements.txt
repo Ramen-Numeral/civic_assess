@@ -7,4 +7,5 @@ langchain-openai
 langchain-anthropic
 pytest
 fastapi
+httpx
 langgraph==1.2.9
