@@ -1,4 +1,5 @@
 from app.domain.validation import Disposition
+from app.features.evidence_ingestion.service import EvidenceIngestionService
 from app.features.query_diversification.schemas import QueryDiversificationRequest
 from app.features.query_diversification.service import QueryDiversificationService
 from app.features.input_validation.errors import InputValidationError
@@ -127,6 +128,20 @@ def build_research_acquisition_node(
         return {"research_acquisition": result}
 
     return acquire_research
+
+
+def build_evidence_ingestion_node(
+    service: EvidenceIngestionService,
+) -> AgentNode[ChatState]:
+    async def ingest_evidence(state: ChatState) -> dict[str, object]:
+        result = await service.ingest(
+            conversation_id=state["conversation_context"].conversation_id,
+            query_set=state["research_query_set"],
+            acquisition=state["research_acquisition"],
+        )
+        return {"evidence_ingestion": result}
+
+    return ingest_evidence
 
 
 def build_query_reframe_node(

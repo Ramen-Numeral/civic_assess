@@ -3,6 +3,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from app.domain.validation import Disposition
 from app.features.input_validation.service import InputValidationService
+from app.features.evidence_ingestion.service import EvidenceIngestionService
 from app.features.query_diversification.service import QueryDiversificationService
 from app.features.query_reframe.service import QueryReframeService
 from app.features.query_resolution.service import QueryResolutionService
@@ -11,6 +12,7 @@ from app.observability.progress import ProgressEmitter
 from app.orchestration.instrumentation import AgentNode, instrument_node, log_route
 from app.orchestration.nodes import (
     build_input_preflight_node,
+    build_evidence_ingestion_node,
     build_input_validation_node,
     build_query_diversification_node,
     build_query_reframe_node,
@@ -28,7 +30,10 @@ def build_chat_graph(
     query_diversification: QueryDiversificationService,
     emitter: ProgressEmitter,
     research_acquisition: ResearchAcquisitionService | None = None,
+    evidence_ingestion: EvidenceIngestionService | None = None,
 ) -> CompiledStateGraph:
+    if evidence_ingestion is not None and research_acquisition is None:
+        raise ValueError("evidence ingestion requires research acquisition")
     graph = StateGraph(ChatState)
     graph.add_node("input_preflight", build_input_preflight_node())
     _add_observed_node(
@@ -83,7 +88,15 @@ def build_chat_graph(
             build_research_acquisition_node(research_acquisition),
         )
         graph.add_edge("query_diversification", "research_acquisition")
-        graph.add_edge("research_acquisition", END)
+        if evidence_ingestion is None:
+            graph.add_edge("research_acquisition", END)
+        else:
+            graph.add_node(
+                "evidence_ingestion",
+                build_evidence_ingestion_node(evidence_ingestion),
+            )
+            graph.add_edge("research_acquisition", "evidence_ingestion")
+            graph.add_edge("evidence_ingestion", END)
     graph.add_conditional_edges(
         "query_reframe",
         _route_after_query_reframe,

@@ -10,6 +10,8 @@ from app.features.conversation_state import (
     ConversationStateService,
 )
 from app.features.input_validation.service import InputValidationService
+from app.features.evidence_ingestion.chunker import MarkdownChunker
+from app.features.evidence_ingestion.service import EvidenceIngestionService
 from app.features.query_diversification.service import QueryDiversificationService
 from app.features.query_reframe.service import QueryReframeService
 from app.features.query_resolution.service import QueryResolutionService
@@ -19,6 +21,7 @@ from app.infrastructure.llm.factory import build_llms
 from app.infrastructure.persistence import (
     SQLiteConversationRepository,
     SQLiteDatabase,
+    SQLiteEvidenceRepository,
 )
 from app.infrastructure.search import TavilySearchClient
 from app.observability.logging import configure_logging
@@ -81,6 +84,14 @@ def build_application(settings: Settings | None = None) -> Application:
         if resolved.tavily_api_key is not None
         else None
     )
+    evidence_ingestion = (
+        EvidenceIngestionService(
+            SQLiteEvidenceRepository(database),
+            MarkdownChunker(),
+        )
+        if research_acquisition is not None
+        else None
+    )
     orchestrator = ChatOrchestrator(
         InputValidationService(
             llm=llms[AgentRole.VALIDATOR],
@@ -100,6 +111,7 @@ def build_application(settings: Settings | None = None) -> Application:
             query_count=resolved.diversified_research_query_count,
         ),
         research_acquisition=research_acquisition,
+        evidence_ingestion=evidence_ingestion,
     )
     chat_interactions = ChatInteractionService(
         conversations,

@@ -1,5 +1,6 @@
 from app.domain.conversation import ConversationContext
 from app.features.input_validation.schemas import InputValidationRequest
+from app.features.evidence_ingestion.service import EvidenceIngestionService
 from app.features.input_validation.service import InputValidationService
 from app.features.query_diversification.service import QueryDiversificationService
 from app.features.query_reframe.service import QueryReframeService
@@ -24,6 +25,7 @@ class ChatOrchestrator:
         reporter: ProgressReporter | None = None,
         *,
         research_acquisition: ResearchAcquisitionService | None = None,
+        evidence_ingestion: EvidenceIngestionService | None = None,
     ) -> None:
         self._emitter = ProgressEmitter(reporter or NoOpProgressReporter())
         self._graph = build_chat_graph(
@@ -33,6 +35,7 @@ class ChatOrchestrator:
             query_diversification,
             self._emitter,
             research_acquisition=research_acquisition,
+            evidence_ingestion=evidence_ingestion,
         )
 
     async def invoke(

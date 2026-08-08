@@ -84,7 +84,6 @@ class TavilySearchClient:
         payload = {
             "query": query,
             "search_depth": "basic",
-            "chunks_per_source": 3,
             "max_results": max_results,
             "topic": "general",
             "include_answer": False,
