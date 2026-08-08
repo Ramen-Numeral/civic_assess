@@ -1,7 +1,7 @@
 from enum import StrEnum
 from typing import NotRequired, TypedDict
 
-from app.domain.conversation import ConversationTurn
+from app.domain.conversation import ConversationContext
 from app.domain.research import ResearchQuerySet
 from app.domain.validation import InputGateResult
 from app.features.query_reframe.schemas import QueryReframeProposal
@@ -16,8 +16,8 @@ class ChatRoute(StrEnum):
 
 class ChatState(TypedDict):
     original_request: str
+    conversation_context: ConversationContext
     normalized_request: NotRequired[str]
-    recent_turns: NotRequired[tuple[ConversationTurn, ...]]
     query_resolution: NotRequired[QueryResolutionResult]
     gate_result: NotRequired[InputGateResult]
     research_query_set: NotRequired[ResearchQuerySet]

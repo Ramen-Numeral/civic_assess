@@ -4,23 +4,17 @@ from types import MappingProxyType
 
 from app.features.query_reframe.schemas import QueryReframeMode
 from app.prompts.base import Prompt
-from app.roles import AgentRole
 
 
 PROMPT_DIR = Path(__file__).parent / "templates"
 QueryReframePrompts = Mapping[QueryReframeMode, Prompt]
 
 
-def build_prompt(role: AgentRole) -> Prompt:
-    template_name = (
-        "query_resolution"
-        if role is AgentRole.QUERY_RESOLVER
-        else role.value
-    )
+def build_input_validation_prompt() -> Prompt:
     return Prompt(
-        name=role.value,
-        description=f"Prompt for the {role.value.replace('_', ' ')} agent.",
-        template_path=PROMPT_DIR / f"{template_name}.md",
+        name="validator",
+        description="Assess request scope, behavior, and instruction integrity.",
+        template_path=PROMPT_DIR / "validator.md",
     )
 
 

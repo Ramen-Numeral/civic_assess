@@ -1,4 +1,5 @@
 import asyncio
+import json
 import sqlite3
 from datetime import datetime
 from uuid import UUID
@@ -6,6 +7,7 @@ from uuid import UUID
 from app.domain.conversation import (
     Conversation,
     ConversationRole,
+    ConversationStateSnapshot,
     StoredConversationTurn,
 )
 from app.features.conversation_memory.repository import (
@@ -28,6 +30,18 @@ class SQLiteConversationRepository(ConversationRepository):
         conversation_id: UUID,
     ) -> Conversation | None:
         return await asyncio.to_thread(self._get_conversation, conversation_id)
+
+    async def get_turn(self, turn_id: UUID) -> StoredConversationTurn | None:
+        return await asyncio.to_thread(self._get_turn, turn_id)
+
+    async def get_conversation_state(
+        self,
+        conversation_id: UUID,
+    ) -> ConversationStateSnapshot | None:
+        return await asyncio.to_thread(
+            self._get_conversation_state,
+            conversation_id,
+        )
 
     async def append_user_turn(
         self,
@@ -66,8 +80,18 @@ class SQLiteConversationRepository(ConversationRepository):
     async def list_turns(
         self,
         conversation_id: UUID,
+        *,
+        after_sequence: int | None = None,
+        before_sequence: int | None = None,
+        limit: int | None = None,
     ) -> tuple[StoredConversationTurn, ...]:
-        return await asyncio.to_thread(self._list_turns, conversation_id)
+        return await asyncio.to_thread(
+            self._list_turns,
+            conversation_id,
+            after_sequence,
+            before_sequence,
+            limit,
+        )
 
     async def delete_conversation(self, conversation_id: UUID) -> bool:
         return await asyncio.to_thread(self._delete_conversation, conversation_id)
@@ -92,6 +116,25 @@ class SQLiteConversationRepository(ConversationRepository):
                 (str(conversation_id),),
             ).fetchone()
         return _conversation(row) if row is not None else None
+
+    def _get_turn(self, turn_id: UUID) -> StoredConversationTurn | None:
+        with self._database.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM turns WHERE turn_id = ?",
+                (str(turn_id),),
+            ).fetchone()
+        return _turn(row) if row is not None else None
+
+    def _get_conversation_state(
+        self,
+        conversation_id: UUID,
+    ) -> ConversationStateSnapshot | None:
+        with self._database.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM conversation_state WHERE conversation_id = ?",
+                (str(conversation_id),),
+            ).fetchone()
+        return _state(row) if row is not None else None
 
     def _append_user_turn(
         self,
@@ -182,13 +225,30 @@ class SQLiteConversationRepository(ConversationRepository):
     def _list_turns(
         self,
         conversation_id: UUID,
+        after_sequence: int | None,
+        before_sequence: int | None,
+        limit: int | None,
     ) -> tuple[StoredConversationTurn, ...]:
+        conditions = ["conversation_id = ?"]
+        parameters: list[object] = [str(conversation_id)]
+        if after_sequence is not None:
+            conditions.append("sequence_number > ?")
+            parameters.append(after_sequence)
+        if before_sequence is not None:
+            conditions.append("sequence_number < ?")
+            parameters.append(before_sequence)
+        where = " AND ".join(conditions)
+        if limit is None:
+            statement = f"SELECT * FROM turns WHERE {where} ORDER BY sequence_number"
+        else:
+            statement = (
+                "SELECT * FROM (SELECT * FROM turns WHERE "
+                f"{where} ORDER BY sequence_number DESC LIMIT ?) "
+                "ORDER BY sequence_number"
+            )
+            parameters.append(limit)
         with self._database.connect() as connection:
-            rows = connection.execute(
-                "SELECT * FROM turns WHERE conversation_id = ? "
-                "ORDER BY sequence_number",
-                (str(conversation_id),),
-            ).fetchall()
+            rows = connection.execute(statement, parameters).fetchall()
         return tuple(_turn(row) for row in rows)
 
     def _delete_conversation(self, conversation_id: UUID) -> bool:
@@ -229,4 +289,23 @@ def _turn(row: sqlite3.Row) -> StoredConversationTurn:
         role=row["role"],
         content=row["content"],
         created_at=row["created_at"],
+    )
+
+
+def _state(row: sqlite3.Row) -> ConversationStateSnapshot:
+    return ConversationStateSnapshot(
+        state_id=row["state_id"],
+        conversation_id=row["conversation_id"],
+        summary_through_sequence=row["summary_through_sequence"],
+        revision=row["revision"],
+        summarizer_version=row["summarizer_version"],
+        current_goal=row["current_goal"],
+        confirmed_decisions=tuple(json.loads(row["confirmed_decisions"])),
+        rejected_proposals=tuple(json.loads(row["rejected_proposals"])),
+        superseded_decisions=tuple(json.loads(row["superseded_decisions"])),
+        active_constraints=tuple(json.loads(row["active_constraints"])),
+        open_questions=tuple(json.loads(row["open_questions"])),
+        important_corrections=tuple(json.loads(row["important_corrections"])),
+        summary=row["summary"],
+        updated_at=row["updated_at"],
     )

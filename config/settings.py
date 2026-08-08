@@ -29,7 +29,6 @@ class Settings(BaseSettings):
     conversation_ttl_minutes: int = Field(default=120, ge=1, le=10_080)
     conversation_turn_retention: int = Field(default=8, ge=1, le=50)
     diversified_research_query_count: int = Field(default=4, ge=3, le=5)
-    max_research_rounds: int = Field(default=2, ge=1, le=5)
     routes: Routes
     provider_credentials: Mapping[ModelProvider, SecretStr]
 
@@ -93,7 +92,6 @@ def load_application_config(
             "DIVERSIFIED_RESEARCH_QUERY_COUNT",
             4,
         ),
-        max_research_rounds=values.get("MAX_RESEARCH_ROUNDS", 2),
         routes=routes,
         provider_credentials=credentials,
     )

@@ -4,7 +4,11 @@ from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
 
-from app.domain.conversation import Conversation, StoredConversationTurn
+from app.domain.conversation import (
+    Conversation,
+    ConversationStateSnapshot,
+    StoredConversationTurn,
+)
 
 
 class AppendUserTurnStatus(StrEnum):
@@ -31,6 +35,13 @@ class ConversationRepository(Protocol):
         conversation_id: UUID,
     ) -> Conversation | None: ...
 
+    async def get_turn(self, turn_id: UUID) -> StoredConversationTurn | None: ...
+
+    async def get_conversation_state(
+        self,
+        conversation_id: UUID,
+    ) -> ConversationStateSnapshot | None: ...
+
     async def append_user_turn(
         self,
         *,
@@ -53,6 +64,10 @@ class ConversationRepository(Protocol):
     async def list_turns(
         self,
         conversation_id: UUID,
+        *,
+        after_sequence: int | None = None,
+        before_sequence: int | None = None,
+        limit: int | None = None,
     ) -> tuple[StoredConversationTurn, ...]: ...
 
     async def delete_conversation(self, conversation_id: UUID) -> bool: ...

@@ -34,7 +34,6 @@ class Prompt(BaseModel):
         """Load and cache the template text."""
         return self.template_path.read_text(encoding="utf-8")
 
-
     def build(self, **values: Any) -> str:
         """Render the prompt using runtime values."""
         expected = self.placeholders()
@@ -53,7 +52,6 @@ class Prompt(BaseModel):
                 f"Could not render prompt '{self.name}': {exc}"
             ) from exc
 
-
     def placeholders(self) -> set[str]:
         """Return placeholders declared in the template."""
         return {
@@ -61,18 +59,3 @@ class Prompt(BaseModel):
             for _, field_name, _, _ in Formatter().parse(self.template)
             if field_name
         }
-
-
-    def metadata(self) -> dict[str, str]:
-        return {
-            "name": self.name,
-            "description": self.description,
-            "template_path": str(self.template_path),
-        }
-
-
-    def with_template(self, template_path: Path) -> "Prompt":
-        """Return a copy using another template file."""
-        return self.model_copy(
-            update={"template_path": template_path}
-        )

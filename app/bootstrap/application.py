@@ -2,6 +2,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from config.settings import Settings, load_application_config
+from app.features.conversation_context import ConversationContextService
 from app.features.conversation_memory import ConversationService
 from app.infrastructure.llm.client import LLM
 from app.infrastructure.llm.factory import build_llms
@@ -19,6 +20,7 @@ class Application:
     llms: Mapping[AgentRole, LLM]
     database: SQLiteDatabase
     conversations: ConversationService
+    conversation_contexts: ConversationContextService
 
 
 def build_application(settings: Settings | None = None) -> Application:
@@ -26,13 +28,20 @@ def build_application(settings: Settings | None = None) -> Application:
     configure_logging(debug=resolved.debug)
     database = SQLiteDatabase(resolved.sqlite_database_path)
     database.initialize()
+    conversation_repository = SQLiteConversationRepository(database)
     conversations = ConversationService(
-        SQLiteConversationRepository(database),
+        conversation_repository,
         ttl_minutes=resolved.conversation_ttl_minutes,
+    )
+    conversation_contexts = ConversationContextService(
+        conversation_repository,
+        conversations,
+        turn_retention=resolved.conversation_turn_retention,
     )
     return Application(
         settings=resolved,
         llms=build_llms(resolved),
         database=database,
         conversations=conversations,
+        conversation_contexts=conversation_contexts,
     )

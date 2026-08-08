@@ -4,7 +4,14 @@ from collections.abc import Sequence
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from app.domain.conversation import ConversationTurn
+from app.domain.conversation import (
+    CONVERSATION_CONTEXT_CHARACTER_LIMIT,
+    ContextSourceKind,
+    ConversationContext,
+    ConversationContextStatus,
+    ConversationStateSnapshot,
+    ConversationTurn,
+)
 from app.features.query_resolution.errors import (
     InvalidQueryResolutionError,
     QueryResolutionError,
@@ -18,36 +25,35 @@ from app.infrastructure.llm.errors import FailureKind, LLMError
 from app.prompts.base import Prompt
 
 
-MAX_CONTEXT_CHARACTERS = 12_000
 NUMBER = re.compile(r"(?<!\w)\$?\d[\d,.]*(?:%|st|nd|rd|th)?(?!\w)")
 URL_OR_MARKDOWN_LINK = re.compile(r"https?://|www\.|\[[^\]]+\]\([^)]+\)", re.I)
 
 
 class QueryResolutionService:
-    def __init__(
-        self,
-        *,
-        llm: LLMClient,
-        prompt: Prompt,
-        turn_retention: int,
-    ) -> None:
-        if turn_retention < 1:
-            raise ValueError("turn_retention must be positive")
+    def __init__(self, *, llm: LLMClient, prompt: Prompt) -> None:
         self._llm = llm
         self._prompt = prompt
-        self._turn_retention = turn_retention
 
     async def resolve(
         self,
         request: QueryResolutionRequest,
     ) -> QueryResolutionResult:
-        turns = self._bounded_turns(request.recent_turns)
+        turns = self._bounded_turns(request.context)
+        remaining = CONVERSATION_CONTEXT_CHARACTER_LIMIT - sum(
+            len(turn.content) for turn in turns
+        )
+        state_payload, state_evidence_text = _state_payload(
+            request.context.state,
+            remaining,
+        )
         messages = [
             SystemMessage(content=self._prompt.build()),
             HumanMessage(
                 content=json.dumps(
                     {
                         "normalized_query": request.normalized_query,
+                        "context_status": request.context.status.value,
+                        "conversation_state": state_payload,
                         "recent_turn_order": "oldest_to_newest",
                         "recent_turns": [
                             {
@@ -72,7 +78,13 @@ class QueryResolutionService:
                 messages,
                 QueryResolutionResult,
             )
-            self._validate_result(request.normalized_query, turns, result)
+            self._validate_result(
+                request.normalized_query,
+                turns,
+                request.context.state,
+                state_evidence_text,
+                result,
+            )
         except LLMError as exc:
             if exc.failures and all(
                 failure.kind is FailureKind.INVALID_OUTPUT
@@ -88,14 +100,22 @@ class QueryResolutionService:
             ) from exc
         return result
 
+    @staticmethod
     def _bounded_turns(
-        self,
-        turns: Sequence[ConversationTurn],
+        context: ConversationContext,
     ) -> tuple[ConversationTurn, ...]:
+        turns = context.recent_turns
+        total = sum(len(turn.content) for turn in turns)
+        if total <= CONVERSATION_CONTEXT_CHARACTER_LIMIT:
+            return turns
+        if context.status is ConversationContextStatus.COMPLETE:
+            raise InvalidQueryResolutionError(
+                "Complete conversation context exceeds resolver budget"
+            )
         selected: list[ConversationTurn] = []
         characters = 0
-        for turn in reversed(turns[-self._turn_retention:]):
-            if characters + len(turn.content) > MAX_CONTEXT_CHARACTERS:
+        for turn in reversed(turns):
+            if characters + len(turn.content) > CONVERSATION_CONTEXT_CHARACTER_LIMIT:
                 break
             selected.append(turn)
             characters += len(turn.content)
@@ -106,13 +126,25 @@ class QueryResolutionService:
     def _validate_result(
         normalized_query: str,
         turns: Sequence[ConversationTurn],
+        state: ConversationStateSnapshot | None,
+        state_evidence_text: Sequence[str],
         result: QueryResolutionResult,
     ) -> None:
         turns_by_id = {turn.turn_id: turn for turn in turns}
         evidence_text: list[str] = []
         for evidence in result.context_evidence:
-            source = turns_by_id.get(evidence.turn_id)
-            if source is None or evidence.excerpt not in source.content:
+            if evidence.source_kind is ContextSourceKind.RAW_TURN:
+                source = turns_by_id.get(evidence.source_id)
+                valid = source is not None and evidence.excerpt in source.content
+            else:
+                valid = (
+                    state is not None
+                    and evidence.source_id == state.state_id
+                    and any(
+                        evidence.excerpt in text for text in state_evidence_text
+                    )
+                )
+            if not valid:
                 raise ValueError("Resolution evidence is not in supplied context")
             evidence_text.append(evidence.excerpt)
 
@@ -144,3 +176,43 @@ class QueryResolutionService:
 
 def _numbers(value: str) -> set[str]:
     return {match.group().casefold() for match in NUMBER.finditer(value)}
+
+
+def _state_payload(
+    state: ConversationStateSnapshot | None,
+    character_budget: int,
+) -> tuple[dict[str, object] | None, tuple[str, ...]]:
+    if state is None:
+        return None, ()
+    remaining = max(character_budget, 0)
+    included: list[str] = []
+
+    def include(value: str | None) -> str | None:
+        nonlocal remaining
+        if value is None or len(value) > remaining:
+            return None
+        remaining -= len(value)
+        included.append(value)
+        return value
+
+    def include_many(values: Sequence[str]) -> list[str]:
+        return [selected for value in values if (selected := include(value))]
+
+    payload: dict[str, object] = {
+        "state_id": str(state.state_id),
+        "summary_through_sequence": state.summary_through_sequence,
+        "revision": state.revision,
+        "summarizer_version": state.summarizer_version,
+        "important_corrections": include_many(state.important_corrections),
+        "current_goal": include(state.current_goal),
+        "confirmed_decisions": include_many(state.confirmed_decisions),
+        "active_constraints": include_many(state.active_constraints),
+        "open_questions": include_many(state.open_questions),
+        "rejected_proposals": include_many(state.rejected_proposals),
+        "superseded_decisions": include_many(state.superseded_decisions),
+    }
+    summary = state.summary[:remaining]
+    if summary:
+        included.append(summary)
+    payload["summary"] = summary
+    return payload, tuple(included)

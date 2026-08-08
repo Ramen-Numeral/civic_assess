@@ -1,4 +1,4 @@
-from app.domain.conversation import ConversationTurn
+from app.domain.conversation import ConversationContext
 from app.features.input_validation.schemas import InputValidationRequest
 from app.features.input_validation.service import InputValidationService
 from app.features.query_diversification.service import QueryDiversificationService
@@ -35,12 +35,12 @@ class ChatOrchestrator:
         self,
         request: InputValidationRequest,
         *,
-        recent_turns: tuple[ConversationTurn, ...] = (),
+        conversation_context: ConversationContext,
     ) -> ChatState:
         async with self._emitter.run():
             return await self._graph.ainvoke(
                 {
                     "original_request": request.query,
-                    "recent_turns": recent_turns,
+                    "conversation_context": conversation_context,
                 }
             )

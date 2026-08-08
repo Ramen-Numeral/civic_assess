@@ -89,7 +89,7 @@ def build_query_resolution_node(
         result = await service.resolve(
             QueryResolutionRequest(
                 normalized_query=state["normalized_request"],
-                recent_turns=state.get("recent_turns", ()),
+                context=state["conversation_context"],
             )
         )
         if result.clarification_question is not None:
