@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     sqlite_database_path: Path = DEFAULT_SQLITE_DATABASE_PATH
     conversation_ttl_minutes: int = Field(default=120, ge=1, le=10_080)
     conversation_turn_retention: int = Field(default=8, ge=1, le=50)
+    conversation_summarizer_raw_turn_count: int = Field(default=6, ge=0, le=50)
     diversified_research_query_count: int = Field(default=4, ge=3, le=5)
     routes: Routes
     provider_credentials: Mapping[ModelProvider, SecretStr]
@@ -88,6 +89,10 @@ def load_application_config(
         ),
         conversation_ttl_minutes=values.get("CONVERSATION_TTL_MINUTES", 120),
         conversation_turn_retention=values.get("CONVERSATION_TURN_RETENTION", 8),
+        conversation_summarizer_raw_turn_count=values.get(
+            "CONVERSATION_SUMMARIZER_RAW_TURN_COUNT",
+            6,
+        ),
         diversified_research_query_count=values.get(
             "DIVERSIFIED_RESEARCH_QUERY_COUNT",
             4,

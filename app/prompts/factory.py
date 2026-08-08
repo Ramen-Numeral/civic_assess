@@ -47,3 +47,11 @@ def build_query_diversification_prompt() -> Prompt:
         description="Generate intent-preserving diversified research queries.",
         template_path=PROMPT_DIR / "query_diversification.md",
     )
+
+
+def build_conversation_state_prompt() -> Prompt:
+    return Prompt(
+        name="conversation_state",
+        description="Compress conversation history into structured state.",
+        template_path=PROMPT_DIR / "conversation_state.md",
+    )
