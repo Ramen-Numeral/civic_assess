@@ -1,12 +1,14 @@
 import asyncio
 import json
+import struct
+from datetime import datetime
 from uuid import UUID
 
-from app.domain.evidence import EvidenceIngestionBatch, EvidenceIngestionSnapshot
-from app.features.evidence_ingestion.repository import (
-    EvidenceRepository,
+from app.features.evidence_ingestion.repository import EvidenceRepository
+from app.features.evidence_ingestion.schemas import (
+    EvidenceIngestionBatch,
+    EvidenceIngestionSnapshot,
     EvidenceWriteResult,
-    EvidenceWriteStatus,
 )
 from app.infrastructure.persistence.sqlite import SQLiteDatabase
 
@@ -33,7 +35,7 @@ class SQLiteEvidenceRepository(EvidenceRepository):
                 (conversation_id,),
             ).fetchone()
             if conversation is None:
-                return EvidenceWriteResult(EvidenceWriteStatus.MISSING)
+                return EvidenceWriteResult("missing")
 
             existing = connection.execute(
                 "SELECT * FROM evidence_ingestions WHERE acquisition_id = ?",
@@ -44,9 +46,9 @@ class SQLiteEvidenceRepository(EvidenceRepository):
                     existing["conversation_id"] != conversation_id
                     or existing["fingerprint"] != batch.fingerprint
                 ):
-                    return EvidenceWriteResult(EvidenceWriteStatus.CONFLICT)
+                    return EvidenceWriteResult("conflict")
                 return EvidenceWriteResult(
-                    EvidenceWriteStatus.EXISTING,
+                    "existing",
                     _snapshot(existing),
                 )
 
@@ -97,8 +99,7 @@ class SQLiteEvidenceRepository(EvidenceRepository):
                             "INSERT INTO evidence_chunks "
                             "(chunk_id, document_id, chunk_index, text, "
                             "heading_path, start_offset, end_offset, "
-                            "content_hash, chunker_version) "
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            "chunker_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                             (
                                 str(chunk.chunk_id),
                                 str(actual_id),
@@ -107,7 +108,6 @@ class SQLiteEvidenceRepository(EvidenceRepository):
                                 json.dumps(chunk.heading_path, ensure_ascii=False),
                                 chunk.start_offset,
                                 chunk.end_offset,
-                                chunk.content_hash,
                                 chunk.chunker_version,
                             ),
                         )
@@ -158,7 +158,14 @@ class SQLiteEvidenceRepository(EvidenceRepository):
                     new_chunks,
                 ),
             )
-            for query in batch.queries:
+            queries = [
+                (batch.query_set.original_query, "original", None, None),
+                *(
+                    (query, "diversified", query.facet.value, query.research_goal)
+                    for query in batch.query_set.diversified_queries
+                ),
+            ]
+            for position, (query, kind, facet, goal) in enumerate(queries):
                 connection.execute(
                     "INSERT INTO evidence_queries "
                     "(acquisition_id, query_id, position, kind, query_text, "
@@ -166,11 +173,11 @@ class SQLiteEvidenceRepository(EvidenceRepository):
                     (
                         str(batch.acquisition_id),
                         str(query.query_id),
-                        query.position,
-                        query.kind.value,
+                        position,
+                        kind,
                         query.text,
-                        query.facet.value if query.facet is not None else None,
-                        query.research_goal,
+                        facet,
+                        goal,
                     ),
                 )
             for document in batch.documents:
@@ -190,7 +197,80 @@ class SQLiteEvidenceRepository(EvidenceRepository):
                             discovery.provider_result_id,
                         ),
                     )
-            return EvidenceWriteResult(EvidenceWriteStatus.CREATED, snapshot)
+            return EvidenceWriteResult("created", snapshot)
+
+    async def unembedded_chunks(
+        self, conversation_id: UUID, version: str, limit: int
+    ) -> tuple[tuple[UUID, str], ...]:
+        return await asyncio.to_thread(
+            self._unembedded_chunks, conversation_id, version, limit
+        )
+
+    def _unembedded_chunks(
+        self, conversation_id: UUID, version: str, limit: int
+    ) -> tuple[tuple[UUID, str], ...]:
+        with self._database.connect() as connection:
+            rows = connection.execute(
+                "SELECT c.chunk_id, c.text FROM evidence_chunks c "
+                "JOIN evidence_documents d USING (document_id) "
+                "WHERE d.conversation_id = ? AND NOT EXISTS (SELECT 1 "
+                "FROM evidence_chunk_embeddings e WHERE e.chunk_id = c.chunk_id "
+                "AND e.embedding_version = ?) "
+                "ORDER BY d.document_id, c.chunk_index LIMIT ?",
+                (str(conversation_id), version, limit),
+            ).fetchall()
+            return tuple((UUID(row["chunk_id"]), row["text"]) for row in rows)
+
+    async def write_embeddings(
+        self,
+        version: str,
+        dimension: int,
+        rows: tuple[tuple[UUID, tuple[float, ...]], ...],
+        created_at: datetime,
+    ) -> int | None:
+        return await asyncio.to_thread(
+            self._write_embeddings,
+            version, dimension, rows, created_at,
+        )
+
+    def _write_embeddings(
+        self,
+        version: str,
+        dimension: int,
+        rows: tuple[tuple[UUID, tuple[float, ...]], ...],
+        created_at: datetime,
+    ) -> int | None:
+        with self._database.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            for chunk_id, _ in rows:
+                chunk = connection.execute(
+                    "SELECT 1 FROM evidence_chunks WHERE chunk_id = ?",
+                    (str(chunk_id),),
+                ).fetchone()
+                existing = connection.execute(
+                    "SELECT dimension FROM evidence_chunk_embeddings "
+                    "WHERE chunk_id = ? AND embedding_version = ?",
+                    (str(chunk_id), version),
+                ).fetchone()
+                if chunk is None or (
+                    existing is not None and existing["dimension"] != dimension
+                ):
+                    return None
+            before = connection.total_changes
+            connection.executemany(
+                "INSERT OR IGNORE INTO evidence_chunk_embeddings "
+                "(chunk_id, embedding_version, dimension, vector, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                [
+                    (
+                        str(chunk_id), version, dimension,
+                        struct.pack(f"<{dimension}f", *vector),
+                        created_at.isoformat(),
+                    )
+                    for chunk_id, vector in rows
+                ],
+            )
+            return connection.total_changes - before
 
 
 def _uuid_json(values: tuple[UUID, ...]) -> str:

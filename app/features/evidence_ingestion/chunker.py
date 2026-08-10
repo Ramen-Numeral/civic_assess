@@ -166,7 +166,6 @@ class MarkdownChunker:
             heading_path=spans[-1].heading_path,
             start_offset=start,
             end_offset=end,
-            content_hash=digest,
             chunker_version=self.version,
         )
 

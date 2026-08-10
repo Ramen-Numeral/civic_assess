@@ -9,3 +9,4 @@ pytest
 fastapi
 httpx
 langgraph==1.2.9
+sentence-transformers>=5.7,<6

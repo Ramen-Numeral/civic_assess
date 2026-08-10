@@ -11,6 +11,7 @@ from app.features.conversation_state import (
 )
 from app.features.input_validation.service import InputValidationService
 from app.features.evidence_ingestion.chunker import MarkdownChunker
+from app.features.evidence_ingestion.embedder import EvidenceEmbedder
 from app.features.evidence_ingestion.service import EvidenceIngestionService
 from app.features.query_diversification.service import QueryDiversificationService
 from app.features.query_reframe.service import QueryReframeService
@@ -84,10 +85,17 @@ def build_application(settings: Settings | None = None) -> Application:
         if resolved.tavily_api_key is not None
         else None
     )
+    evidence_repository = SQLiteEvidenceRepository(database)
     evidence_ingestion = (
         EvidenceIngestionService(
-            SQLiteEvidenceRepository(database),
+            evidence_repository,
             MarkdownChunker(),
+            EvidenceEmbedder(
+                resolved.evidence_embedding_model_id,
+                resolved.evidence_embedding_model_revision,
+                batch_size=resolved.evidence_embedding_batch_size,
+                device=resolved.evidence_embedding_device,
+            ),
         )
         if research_acquisition is not None
         else None

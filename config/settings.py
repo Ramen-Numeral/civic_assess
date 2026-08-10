@@ -33,6 +33,14 @@ class Settings(BaseSettings):
     research_results_per_query: int = Field(default=5, ge=1, le=5)
     tavily_timeout_seconds: float = Field(default=20, gt=0, le=60)
     tavily_api_key: SecretStr | None = None
+    evidence_embedding_model_id: str = Field(
+        default="BAAI/bge-small-en-v1.5", min_length=1
+    )
+    evidence_embedding_model_revision: str = Field(
+        default="5c38ec7c405ec4b44b94cc5a9bb96e735b38267a", min_length=1
+    )
+    evidence_embedding_batch_size: int = Field(default=32, ge=1, le=256)
+    evidence_embedding_device: str = Field(default="cpu", min_length=1)
     routes: Routes
     provider_credentials: Mapping[ModelProvider, SecretStr]
 
@@ -107,6 +115,17 @@ def load_application_config(
         ),
         tavily_timeout_seconds=values.get("TAVILY_TIMEOUT_SECONDS", 20),
         tavily_api_key=SecretStr(tavily_key) if tavily_key else None,
+        evidence_embedding_model_id=values.get(
+            "EVIDENCE_EMBEDDING_MODEL_ID", "BAAI/bge-small-en-v1.5"
+        ),
+        evidence_embedding_model_revision=values.get(
+            "EVIDENCE_EMBEDDING_MODEL_REVISION",
+            "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a",
+        ),
+        evidence_embedding_batch_size=values.get(
+            "EVIDENCE_EMBEDDING_BATCH_SIZE", 32
+        ),
+        evidence_embedding_device=values.get("EVIDENCE_EMBEDDING_DEVICE", "cpu"),
         routes=routes,
         provider_credentials=credentials,
     )

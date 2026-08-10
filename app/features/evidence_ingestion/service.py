@@ -8,21 +8,16 @@ from app.domain.acquisition import (
     QueryAcquisitionSuccess,
     ResearchAcquisitionSet,
 )
-from app.domain.evidence import (
-    EvidenceDiscovery,
-    EvidenceDocument,
-    EvidenceIngestionBatch,
-    EvidenceIngestionSnapshot,
-    EvidenceQueryKind,
-    EvidenceResearchQuery,
-)
+from app.domain.evidence import EvidenceDiscovery, EvidenceDocument
 from app.domain.research import ResearchQuerySet
 from app.features.evidence_ingestion.canonicalization import canonicalize_url
 from app.features.evidence_ingestion.chunker import MarkdownChunker
+from app.features.evidence_ingestion.embedder import EvidenceEmbedder
 from app.features.evidence_ingestion.errors import EvidenceIngestionError
-from app.features.evidence_ingestion.repository import (
-    EvidenceRepository,
-    EvidenceWriteStatus,
+from app.features.evidence_ingestion.repository import EvidenceRepository
+from app.features.evidence_ingestion.schemas import (
+    EvidenceIngestionBatch,
+    EvidenceIngestionSnapshot,
 )
 
 
@@ -34,11 +29,13 @@ class EvidenceIngestionService:
         self,
         repository: EvidenceRepository,
         chunker: MarkdownChunker,
+        embedder: EvidenceEmbedder,
         *,
         now: Callable[[], datetime] | None = None,
     ) -> None:
         self._repository = repository
         self._chunker = chunker
+        self._embedder = embedder
         self._now = now or (lambda: datetime.now(UTC))
 
     async def ingest(
@@ -49,7 +46,7 @@ class EvidenceIngestionService:
         acquisition: ResearchAcquisitionSet,
         round_number: int = 0,
     ) -> EvidenceIngestionSnapshot:
-        queries = _queries(query_set)
+        queries = (query_set.original_query, *query_set.diversified_queries)
         expected = [(query.query_id, query.text) for query in queries]
         actual = [
             (outcome.query_id, outcome.query_text)
@@ -138,43 +135,40 @@ class EvidenceIngestionService:
             round_number=round_number,
             fingerprint=fingerprint,
             ingested_at=self._now(),
-            queries=tuple(queries),
+            query_set=query_set,
             documents=tuple(documents),
             chunks=tuple(chunks),
             skipped_result_ids=tuple(skipped),
         )
         result = await self._repository.write_evidence(batch)
-        if result.status is EvidenceWriteStatus.MISSING:
+        if result.status == "missing":
             raise EvidenceIngestionError(
                 "conversation_missing",
                 "Conversation does not exist",
             )
-        if result.status is EvidenceWriteStatus.CONFLICT:
+        if result.status == "conflict":
             raise EvidenceIngestionError(
                 "ingestion_conflict",
                 "Acquisition identity was already used for different evidence",
             )
         if result.snapshot is None:
             raise RuntimeError("Evidence repository returned no snapshot")
+        await self._embed(conversation_id)
         return result.snapshot
 
-
-def _queries(query_set: ResearchQuerySet) -> list[EvidenceResearchQuery]:
-    result = [EvidenceResearchQuery(
-        query_id=query_set.original_query.query_id,
-        position=0,
-        kind=EvidenceQueryKind.ORIGINAL,
-        text=query_set.original_query.text,
-    )]
-    result.extend(
-        EvidenceResearchQuery(
-            query_id=query.query_id,
-            position=position,
-            kind=EvidenceQueryKind.DIVERSIFIED,
-            text=query.text,
-            facet=query.facet,
-            research_goal=query.research_goal,
-        )
-        for position, query in enumerate(query_set.diversified_queries, start=1)
-    )
-    return result
+    async def _embed(self, conversation_id: UUID) -> None:
+        while chunks := await self._repository.unembedded_chunks(
+            conversation_id, self._embedder.version, self._embedder.batch_size
+        ):
+            vectors = await self._embedder.embed([text for _, text in chunks])
+            written = await self._repository.write_embeddings(
+                self._embedder.version,
+                self._embedder.dimension,
+                tuple(
+                    (chunk_id, vector)
+                    for (chunk_id, _), vector in zip(chunks, vectors, strict=True)
+                ),
+                self._now(),
+            )
+            if written is None:
+                raise RuntimeError("Evidence changed while it was being embedded")

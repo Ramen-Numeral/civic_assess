@@ -3,9 +3,9 @@ from typing import NotRequired, TypedDict
 
 from app.domain.acquisition import ResearchAcquisitionSet
 from app.domain.conversation import ConversationContext
-from app.domain.evidence import EvidenceIngestionSnapshot
 from app.domain.research import ResearchQuerySet
 from app.domain.validation import InputGateResult
+from app.features.evidence_ingestion.schemas import EvidenceIngestionSnapshot
 from app.features.query_reframe.schemas import QueryReframeProposal
 from app.features.query_resolution.schemas import QueryResolutionResult
 

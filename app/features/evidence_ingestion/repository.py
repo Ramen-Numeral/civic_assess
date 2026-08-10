@@ -1,21 +1,11 @@
-from dataclasses import dataclass
-from enum import StrEnum
+from datetime import datetime
 from typing import Protocol
+from uuid import UUID
 
-from app.domain.evidence import EvidenceIngestionBatch, EvidenceIngestionSnapshot
-
-
-class EvidenceWriteStatus(StrEnum):
-    CREATED = "created"
-    EXISTING = "existing"
-    MISSING = "missing"
-    CONFLICT = "conflict"
-
-
-@dataclass(frozen=True)
-class EvidenceWriteResult:
-    status: EvidenceWriteStatus
-    snapshot: EvidenceIngestionSnapshot | None = None
+from app.features.evidence_ingestion.schemas import (
+    EvidenceIngestionBatch,
+    EvidenceWriteResult,
+)
 
 
 class EvidenceRepository(Protocol):
@@ -23,3 +13,15 @@ class EvidenceRepository(Protocol):
         self,
         batch: EvidenceIngestionBatch,
     ) -> EvidenceWriteResult: ...
+
+    async def unembedded_chunks(
+        self, conversation_id: UUID, version: str, limit: int
+    ) -> tuple[tuple[UUID, str], ...]: ...
+
+    async def write_embeddings(
+        self,
+        version: str,
+        dimension: int,
+        rows: tuple[tuple[UUID, tuple[float, ...]], ...],
+        created_at: datetime,
+    ) -> int | None: ...
