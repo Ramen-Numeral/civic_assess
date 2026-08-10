@@ -49,6 +49,14 @@ def build_query_diversification_prompt() -> Prompt:
     )
 
 
+def build_evidence_coverage_prompt() -> Prompt:
+    return Prompt(
+        name="evidence_coverage",
+        description="Assess whether retrieved evidence sufficiently covers a query.",
+        template_path=PROMPT_DIR / "evidence_coverage.md",
+    )
+
+
 def build_conversation_state_prompt() -> Prompt:
     return Prompt(
         name="conversation_state",

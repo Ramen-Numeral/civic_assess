@@ -13,6 +13,7 @@ from app.features.input_validation.service import InputValidationService
 from app.features.evidence_ingestion.chunker import MarkdownChunker
 from app.features.evidence_ingestion.embedder import EvidenceEmbedder
 from app.features.evidence_ingestion.service import EvidenceIngestionService
+from app.features.evidence_coverage import EvidenceCoverageService
 from app.features.evidence_retrieval.service import EvidenceRetrievalService
 from app.features.query_diversification.service import QueryDiversificationService
 from app.features.query_reframe.service import QueryReframeService
@@ -30,6 +31,7 @@ from app.observability.logging import configure_logging
 from app.orchestration.orchestrator import ChatOrchestrator
 from app.prompts.factory import (
     build_conversation_state_prompt,
+    build_evidence_coverage_prompt,
     build_input_validation_prompt,
     build_query_diversification_prompt,
     build_query_reframe_prompts,
@@ -45,6 +47,7 @@ class Application:
     database: SQLiteDatabase
     conversations: ConversationService
     conversation_contexts: ConversationContextService
+    evidence_coverage: EvidenceCoverageService
     evidence_retrieval: EvidenceRetrievalService | None
     chat_interactions: ChatInteractionService
 
@@ -75,6 +78,10 @@ def build_application(settings: Settings | None = None) -> Application:
         conversations,
         conversation_state,
         turn_retention=resolved.conversation_turn_retention,
+    )
+    evidence_coverage = EvidenceCoverageService(
+        llm=llms[AgentRole.EVIDENCE_COVERAGE],
+        prompt=build_evidence_coverage_prompt(),
     )
     research_acquisition = (
         ResearchAcquisitionService(
@@ -146,6 +153,7 @@ def build_application(settings: Settings | None = None) -> Application:
         database=database,
         conversations=conversations,
         conversation_contexts=conversation_contexts,
+        evidence_coverage=evidence_coverage,
         evidence_retrieval=evidence_retrieval,
         chat_interactions=chat_interactions,
     )
