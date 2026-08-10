@@ -29,6 +29,7 @@ class ChatInteractionResult:
     """Internal result; it is not a public transport contract."""
 
     user_turn: StoredConversationTurn
+    assistant_turn: StoredConversationTurn | None
     workflow_state: ChatState
 
 
@@ -109,8 +110,18 @@ class ChatInteractionService:
                 InputValidationRequest(query=user_turn.content),
                 conversation_context=context,
             )
+            answer = state.get("answer_result")
+            assistant_turn = (
+                await self._conversations.append_assistant_turn(
+                    conversation_id=request.conversation_id,
+                    content=answer.text,
+                )
+                if answer is not None
+                else None
+            )
             return ChatInteractionResult(
                 user_turn=user_turn,
+                assistant_turn=assistant_turn,
                 workflow_state=state,
             )
 

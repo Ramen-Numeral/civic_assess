@@ -3,6 +3,7 @@ from app.features.input_validation.errors import InputValidationError
 from app.features.input_validation.preflight import preflight_input
 from app.features.input_validation.schemas import InputValidationRequest
 from app.features.input_validation.service import InputValidationService
+from app.features.answer_synthesis.schemas import GroundedAnswerRequest
 from app.features.query_reframe.errors import InvalidReframeProposalError
 from app.features.query_reframe.schemas import (
     QueryReframeProposal,
@@ -15,6 +16,7 @@ from app.features.query_reframe.service import (
 from app.features.query_resolution.schemas import QueryResolutionRequest
 from app.features.query_resolution.service import QueryResolutionService
 from app.orchestration.instrumentation import AgentNode, log_route
+from app.orchestration.answer import AnswerCoordinator
 from app.orchestration.research import ResearchCoordinator
 from app.orchestration.state import ChatRoute, ChatState
 
@@ -114,6 +116,21 @@ def build_research_node(
         return {"research_result": result}
 
     return research
+
+
+def build_answer_node(coordinator: AnswerCoordinator) -> AgentNode[ChatState]:
+    async def answer(state: ChatState) -> dict[str, object]:
+        research = state["research_result"]
+        selected = research.selected_round
+        result = await coordinator.answer(GroundedAnswerRequest(
+            canonical_query=state["gate_result"].normalized_query,
+            requirements=research.plan.requirements,
+            coverage=selected.coverage,
+            evidence=selected.coverage_view,
+        ))
+        return {"answer_result": result}
+
+    return answer
 
 
 def build_query_reframe_node(

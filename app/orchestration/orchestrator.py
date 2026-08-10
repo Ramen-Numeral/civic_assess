@@ -10,6 +10,7 @@ from app.observability.progress import (
 )
 from app.orchestration.graph import build_chat_graph
 from app.orchestration.research import ResearchCoordinator
+from app.orchestration.answer import AnswerCoordinator
 from app.orchestration.state import ChatState
 
 
@@ -22,6 +23,7 @@ class ChatOrchestrator:
         reporter: ProgressReporter | None = None,
         *,
         research: ResearchCoordinator | None = None,
+        answers: AnswerCoordinator | None = None,
     ) -> None:
         self._emitter = ProgressEmitter(reporter or NoOpProgressReporter())
         self._graph = build_chat_graph(
@@ -30,6 +32,7 @@ class ChatOrchestrator:
             query_resolution,
             self._emitter,
             research=research,
+            answers=answers,
         )
 
     async def invoke(

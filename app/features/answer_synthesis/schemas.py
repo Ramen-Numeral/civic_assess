@@ -1,6 +1,7 @@
+from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from app.domain.research import ResearchRequirement
 from app.domain.validation import NonBlankText
@@ -10,6 +11,9 @@ from app.features.evidence_coverage.schemas import (
     RequirementRef,
 )
 from app.features.evidence_retrieval.schemas import EvidenceCandidate
+
+
+ClaimRef = Annotated[str, StringConstraints(pattern=r"^C[1-9]\d*$")]
 
 
 class GroundedAnswerRequest(BaseModel):
@@ -59,6 +63,24 @@ class GroundedAnswerProposal(BaseModel):
     claims: tuple[AnswerClaimProposal, ...] = Field(min_length=1, max_length=20)
 
 
+class AnswerRepairClaimProposal(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    replaces_claim_ref: ClaimRef
+    text: NonBlankText
+    evidence_refs: tuple[EvidenceRef, ...] = Field(min_length=1)
+
+    def model_post_init(self, __context: object) -> None:
+        if len(set(self.evidence_refs)) != len(self.evidence_refs):
+            raise ValueError("Repaired claim evidence references must be unique")
+
+
+class GroundedAnswerRepairProposal(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    claims: tuple[AnswerRepairClaimProposal, ...] = Field(default=(), max_length=20)
+
+
 class AtomicAnswerClaim(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -81,3 +103,16 @@ class GroundedAnswerDraft(BaseModel):
         normalized = [" ".join(item.text.split()).casefold() for item in self.claims]
         if len(normalized) != len(set(normalized)):
             raise ValueError("Atomic answer claims must be distinct")
+
+
+class RepairedAnswerClaim(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    replaces_claim_id: UUID
+    claim: AtomicAnswerClaim
+
+
+class RepairedAnswerDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    replacements: tuple[RepairedAnswerClaim, ...]

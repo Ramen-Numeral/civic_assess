@@ -10,11 +10,13 @@ from app.orchestration.instrumentation import AgentNode, instrument_node, log_ro
 from app.orchestration.nodes import (
     build_input_preflight_node,
     build_input_validation_node,
+    build_answer_node,
     build_query_reframe_node,
     build_query_resolution_node,
     build_research_node,
 )
 from app.orchestration.research import ResearchCoordinator
+from app.orchestration.answer import AnswerCoordinator
 from app.orchestration.state import ChatState
 from app.roles import AgentRole
 
@@ -25,7 +27,10 @@ def build_chat_graph(
     query_resolution: QueryResolutionService,
     emitter: ProgressEmitter,
     research: ResearchCoordinator | None = None,
+    answers: AnswerCoordinator | None = None,
 ) -> CompiledStateGraph:
+    if answers is not None and research is None:
+        raise ValueError("Answer coordination requires research")
     graph = StateGraph(ChatState)
     graph.add_node("input_preflight", build_input_preflight_node())
     _add_observed_node(
@@ -59,7 +64,12 @@ def build_chat_graph(
     routes = {"query_reframe": "query_reframe", "end": END}
     if research is not None:
         graph.add_node("research", build_research_node(research))
-        graph.add_edge("research", END)
+        if answers is None:
+            graph.add_edge("research", END)
+        else:
+            graph.add_node("answer", build_answer_node(answers))
+            graph.add_edge("research", "answer")
+            graph.add_edge("answer", END)
         routes["research"] = "research"
     graph.add_conditional_edges(
         "input_validation",

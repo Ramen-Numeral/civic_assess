@@ -31,9 +31,11 @@ from app.infrastructure.persistence import (
 from app.infrastructure.search import TavilySearchClient
 from app.observability.logging import configure_logging
 from app.orchestration.orchestrator import ChatOrchestrator
+from app.orchestration.answer import AnswerCoordinator
 from app.orchestration.research import ResearchCoordinator
 from app.prompts.factory import (
     build_conversation_state_prompt,
+    build_answer_repair_prompt,
     build_answer_synthesis_prompt,
     build_evidence_coverage_prompt,
     build_gap_query_planning_prompt,
@@ -54,6 +56,7 @@ class Application:
     conversation_contexts: ConversationContextService
     answer_synthesis: AnswerSynthesisService
     claim_verification: ClaimVerificationService
+    answers: AnswerCoordinator
     evidence_coverage: EvidenceCoverageService
     evidence_retrieval: EvidenceRetrievalService
     research: ResearchCoordinator
@@ -94,6 +97,7 @@ def build_application(settings: Settings | None = None) -> Application:
     answer_synthesis = AnswerSynthesisService(
         llm=llms[AgentRole.ANSWER_WRITER],
         prompt=build_answer_synthesis_prompt(),
+        repair_prompt=build_answer_repair_prompt(),
     )
     claim_verification = ClaimVerificationService(
         resolved.claim_nli_model_id,
@@ -103,6 +107,7 @@ def build_application(settings: Settings | None = None) -> Application:
         entailment_threshold=resolved.claim_nli_entailment_threshold,
         contradiction_threshold=resolved.claim_nli_contradiction_threshold,
     )
+    answers = AnswerCoordinator(answer_synthesis, claim_verification)
     query_planner = QueryDiversificationService(
         llm=llms[AgentRole.QUERY_DIVERSIFIER],
         prompt=build_query_diversification_prompt(),
@@ -171,6 +176,7 @@ def build_application(settings: Settings | None = None) -> Application:
             prompt=build_query_resolution_prompt(),
         ),
         research=research,
+        answers=answers,
     )
     chat_interactions = ChatInteractionService(
         conversations,
@@ -186,6 +192,7 @@ def build_application(settings: Settings | None = None) -> Application:
         conversation_contexts=conversation_contexts,
         answer_synthesis=answer_synthesis,
         claim_verification=claim_verification,
+        answers=answers,
         evidence_coverage=evidence_coverage,
         evidence_retrieval=evidence_retrieval,
         research=research,

@@ -6,6 +6,7 @@ from app.domain.validation import InputGateResult
 from app.features.query_reframe.schemas import QueryReframeProposal
 from app.features.query_resolution.schemas import QueryResolutionResult
 from app.orchestration.research import ResearchResult
+from app.orchestration.answer import GroundedAnswerResult
 
 
 class ChatRoute(StrEnum):
@@ -21,6 +22,7 @@ class ChatState(TypedDict):
     query_resolution: NotRequired[QueryResolutionResult]
     gate_result: NotRequired[InputGateResult]
     research_result: NotRequired[ResearchResult]
+    answer_result: NotRequired[GroundedAnswerResult]
     query_reframe_proposal: NotRequired[QueryReframeProposal]
     proposal_gate_result: NotRequired[InputGateResult]
     chat_route: NotRequired[ChatRoute]

@@ -73,6 +73,14 @@ def build_answer_synthesis_prompt() -> Prompt:
     )
 
 
+def build_answer_repair_prompt() -> Prompt:
+    return Prompt(
+        name="answer_repair",
+        description="Repair unsupported atomic answer claims once.",
+        template_path=PROMPT_DIR / "answer_repair.md",
+    )
+
+
 def build_conversation_state_prompt() -> Prompt:
     return Prompt(
         name="conversation_state",
