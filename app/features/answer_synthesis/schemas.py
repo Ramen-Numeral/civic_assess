@@ -81,6 +81,21 @@ class GroundedAnswerRepairProposal(BaseModel):
     claims: tuple[AnswerRepairClaimProposal, ...] = Field(default=(), max_length=20)
 
 
+class ComposedSentenceProposal(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    claim_ref: ClaimRef
+    text: NonBlankText
+
+
+class GroundedAnswerCompositionProposal(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    sentences: tuple[ComposedSentenceProposal, ...] = Field(
+        min_length=1, max_length=20
+    )
+
+
 class AtomicAnswerClaim(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 

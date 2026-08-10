@@ -13,6 +13,7 @@ from app.features.answer_synthesis.errors import (
 from app.features.answer_synthesis.schemas import (
     AtomicAnswerClaim,
     GroundedAnswerDraft,
+    GroundedAnswerCompositionProposal,
     GroundedAnswerProposal,
     GroundedAnswerRepairProposal,
     GroundedAnswerRequest,
@@ -24,16 +25,25 @@ from app.infrastructure.llm.errors import FailureKind, LLMError
 from app.prompts.base import Prompt
 
 if TYPE_CHECKING:
-    from app.features.claim_verification.schemas import ClaimVerificationResult
+    from app.features.claim_verification.schemas import (
+        ClaimVerificationResult,
+        ConflictCandidate,
+    )
 
 
 class AnswerSynthesisService:
     def __init__(
-        self, *, llm: LLMClient, prompt: Prompt, repair_prompt: Prompt
+        self,
+        *,
+        llm: LLMClient,
+        prompt: Prompt,
+        repair_prompt: Prompt,
+        composition_prompt: Prompt,
     ) -> None:
         self._llm = llm
         self._prompt = prompt
         self._repair_prompt = repair_prompt
+        self._composition_prompt = composition_prompt
 
     async def draft(self, request: GroundedAnswerRequest) -> GroundedAnswerDraft:
         if not request.coverage.findings:
@@ -225,4 +235,62 @@ class AnswerSynthesisService:
         except (KeyError, ValueError) as exc:
             raise InvalidAnswerProposalError(
                 "Answer repair violated grounding invariants"
+            ) from exc
+
+    async def compose(
+        self,
+        request: GroundedAnswerRequest,
+        draft: GroundedAnswerDraft,
+        conflicts: tuple[ConflictCandidate, ...],
+    ) -> GroundedAnswerDraft:
+        if not draft.claims:
+            return draft
+        claims = {f"C{index}": claim for index, claim in enumerate(draft.claims, 1)}
+        claim_refs = {claim.claim_id: ref for ref, claim in claims.items()}
+        requirements = {item.requirement_id: item for item in request.requirements}
+        evidence = {item.chunk_id: item for item in request.evidence}
+        messages = [
+            SystemMessage(content=self._composition_prompt.build()),
+            HumanMessage(content=json.dumps({
+                "canonical_query": request.canonical_query,
+                "claims": [{
+                    "ref": ref,
+                    "text": claim.text,
+                    "requirement": requirements[claim.requirement_id].description,
+                    "sources": [evidence[item].title for item in claim.supporting_chunk_ids],
+                } for ref, claim in claims.items()],
+                "conflict_candidates": [{
+                    "left_claim_ref": claim_refs[item.left_claim_id],
+                    "right_claim_ref": claim_refs[item.right_claim_id],
+                    "contradiction_score": item.contradiction_score,
+                } for item in conflicts],
+                "limitations": [gap.missing_evidence for gap in request.coverage.gaps],
+            }, ensure_ascii=False)),
+        ]
+        try:
+            proposal = await self._llm.invoke_structured(
+                messages, GroundedAnswerCompositionProposal,
+            )
+            if tuple(item.claim_ref for item in proposal.sentences) != tuple(claims):
+                raise ValueError("Composition must preserve claim order and identity")
+            return GroundedAnswerDraft(claims=tuple(
+                claims[item.claim_ref].model_copy(update={"text": item.text})
+                for item in proposal.sentences
+            ))
+        except LLMError as exc:
+            if exc.failures and all(
+                failure.kind is FailureKind.INVALID_OUTPUT
+                for failure in exc.failures
+            ):
+                raise InvalidAnswerProposalError(
+                    "Answer composition returned invalid structured output"
+                ) from exc
+            raise AnswerSynthesisError(
+                "answer_writer_unavailable",
+                "I couldn't compose the grounded answer right now.",
+                retryable=True,
+            ) from exc
+        except (KeyError, ValueError) as exc:
+            raise InvalidAnswerProposalError(
+                "Answer composition violated claim alignment"
             ) from exc

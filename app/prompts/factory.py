@@ -81,6 +81,14 @@ def build_answer_repair_prompt() -> Prompt:
     )
 
 
+def build_answer_composition_prompt() -> Prompt:
+    return Prompt(
+        name="answer_composition",
+        description="Compose verified claims without changing their meaning.",
+        template_path=PROMPT_DIR / "answer_composition.md",
+    )
+
+
 def build_conversation_state_prompt() -> Prompt:
     return Prompt(
         name="conversation_state",

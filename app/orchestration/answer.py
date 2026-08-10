@@ -1,3 +1,4 @@
+from time import perf_counter
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, model_validator
@@ -18,6 +19,7 @@ from app.features.claim_verification.schemas import (
     ClaimVerification,
     ClaimVerificationRequest,
     ClaimVerificationResult,
+    ConflictCandidate,
 )
 from app.features.claim_verification.service import ClaimVerificationService
 from app.features.evidence_coverage.schemas import EvidenceCoverageAssessment
@@ -31,6 +33,12 @@ class GroundedAnswerResult(BaseModel):
     verification: ClaimVerificationResult
     discarded_claim_ids: tuple[UUID, ...]
     repair_attempted: bool
+    conflict_candidates: tuple[ConflictCandidate, ...] = ()
+    rewritten_claim_ids: tuple[UUID, ...] = ()
+    fallback_claim_ids: tuple[UUID, ...] = ()
+    conflict_screening_ms: float = 0
+    composition_ms: float = 0
+    postcomposition_nli_ms: float = 0
     text: NonBlankText
 
     @model_validator(mode="after")
@@ -45,6 +53,9 @@ class GroundedAnswerResult(BaseModel):
             raise ValueError("Discarded claim IDs must be unique")
         if set(draft_ids) & set(self.discarded_claim_ids):
             raise ValueError("Surviving claims cannot be discarded")
+        rewritten, fallback = set(self.rewritten_claim_ids), set(self.fallback_claim_ids)
+        if rewritten & fallback or rewritten | fallback != set(draft_ids):
+            raise ValueError("Every final claim must be rewritten or fallback")
         return self
 
 
@@ -131,12 +142,69 @@ class AnswerCoordinator:
         verification = ClaimVerificationResult(
             model_version=initial.model_version, claims=tuple(final_results),
         )
+        started = perf_counter()
+        conflicts = await self._verification.screen_conflicts(draft)
+        conflict_ms = _elapsed(started)
+        started = perf_counter()
+        try:
+            composed = await self._synthesis.compose(request, draft, conflicts)
+        except (AnswerSynthesisError, InvalidAnswerProposalError):
+            composed = None
+        composition_ms = _elapsed(started)
+        rewritten_ids: list[UUID] = []
+        fallback_ids: list[UUID] = []
+        if composed is not None:
+            _require_claim_identity(draft, composed)
+            started = perf_counter()
+            fidelity = await self._verification.verify_fidelity(tuple(
+                (source.text, rewrite.text)
+                for source, rewrite in zip(
+                    draft.claims, composed.claims, strict=True
+                )
+            ))
+            composed_verification = await self._verification.verify(
+                ClaimVerificationRequest(draft=composed, evidence=request.evidence)
+            )
+            _require_alignment(composed, composed_verification)
+            if composed_verification.model_version != verification.model_version:
+                raise ValueError("Answer verification model changed during composition")
+            final_claims, final_results = [], []
+            for source, source_result, rewrite, pair, rewrite_result in zip(
+                draft.claims,
+                verification.claims,
+                composed.claims,
+                fidelity,
+                composed_verification.claims,
+                strict=True,
+            ):
+                accepted = (
+                    all(item.verdict == "entailed" for item in pair)
+                    and rewrite_result.verdict == "entailed"
+                )
+                final_claims.append(rewrite if accepted else source)
+                final_results.append(rewrite_result if accepted else source_result)
+                (rewritten_ids if accepted else fallback_ids).append(source.claim_id)
+            draft = GroundedAnswerDraft(claims=tuple(final_claims))
+            verification = ClaimVerificationResult(
+                model_version=verification.model_version,
+                claims=tuple(final_results),
+            )
+            postcomposition_ms = _elapsed(started)
+        else:
+            fallback_ids.extend(item.claim_id for item in draft.claims)
+            postcomposition_ms = 0
         return GroundedAnswerResult(
             coverage=request.coverage,
             draft=draft,
             verification=verification,
             discarded_claim_ids=tuple(discarded),
             repair_attempted=bool(failed_claims),
+            conflict_candidates=conflicts,
+            rewritten_claim_ids=tuple(rewritten_ids),
+            fallback_claim_ids=tuple(fallback_ids),
+            conflict_screening_ms=conflict_ms,
+            composition_ms=composition_ms,
+            postcomposition_nli_ms=postcomposition_ms,
             text=render_grounded_answer(draft, request.coverage, request.evidence),
         )
 
@@ -148,3 +216,19 @@ def _require_alignment(
         item.claim_id for item in verification.claims
     ):
         raise ValueError("Claim verification does not align with its draft")
+
+
+def _require_claim_identity(
+    source: GroundedAnswerDraft, rewrite: GroundedAnswerDraft
+) -> None:
+    if any(
+        left.claim_id != right.claim_id
+        or left.requirement_id != right.requirement_id
+        or left.supporting_chunk_ids != right.supporting_chunk_ids
+        for left, right in zip(source.claims, rewrite.claims, strict=True)
+    ):
+        raise ValueError("Composition changed authoritative claim identity")
+
+
+def _elapsed(started: float) -> float:
+    return round((perf_counter() - started) * 1000, 3)

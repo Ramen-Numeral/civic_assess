@@ -5,24 +5,28 @@ from threading import Lock
 from typing import Any, Protocol
 from uuid import UUID
 
+from app.features.answer_synthesis.schemas import GroundedAnswerDraft
 from app.features.claim_verification.schemas import (
     CitationVerification,
     ClaimVerification,
     ClaimVerificationRequest,
     ClaimVerificationResult,
+    ConflictCandidate,
     EntailmentVerdict,
+    TextPairVerification,
 )
 from app.features.evidence_retrieval.schemas import EvidenceCandidate
 
 
 Scores = tuple[float, float, float]  # entailment, contradiction, neutral
+ScoringPair = tuple[str, str, str]  # premise, hypothesis, repeated prefix
 
 
 class _CitationScorer(Protocol):
     version: str
 
     def score(
-        self, pairs: Sequence[tuple[EvidenceCandidate, str]]
+        self, pairs: Sequence[ScoringPair]
     ) -> tuple[tuple[Scores, ...], ...]: ...
 
 
@@ -59,16 +63,19 @@ class ClaimVerificationService:
             )
         evidence = {item.chunk_id: item for item in request.evidence}
         pairs = [
-            (evidence[chunk_id], claim.text)
+            self._evidence_pair(evidence[chunk_id], claim.text)
             for claim in request.draft.claims
             for chunk_id in claim.supporting_chunk_ids
         ]
-        scored = await asyncio.to_thread(self._scorer.score, pairs)
-        if len(scored) != len(pairs) or any(not windows for windows in scored):
-            raise RuntimeError("NLI scorer returned incomplete citation results")
+        scored = await self._score(pairs)
+        chunk_ids = (
+            chunk_id
+            for claim in request.draft.claims
+            for chunk_id in claim.supporting_chunk_ids
+        )
         citations = iter(
-            self._citation(item.chunk_id, windows)
-            for (item, _), windows in zip(pairs, scored, strict=True)
+            self._citation(chunk_id, windows)
+            for chunk_id, windows in zip(chunk_ids, scored, strict=True)
         )
         claims = []
         for claim in request.draft.claims:
@@ -89,9 +96,69 @@ class ClaimVerificationService:
             model_version=self._scorer.version, claims=tuple(claims)
         )
 
+    async def verify_fidelity(
+        self, pairs: Sequence[tuple[str, str]]
+    ) -> tuple[tuple[TextPairVerification, TextPairVerification], ...]:
+        scored = await self._score(tuple(
+            item for source, rewrite in pairs
+            for item in ((source, rewrite, ""), (rewrite, source, ""))
+        ))
+        results = tuple(self._text_pair(item) for item in scored)
+        return tuple(
+            (results[index], results[index + 1])
+            for index in range(0, len(results), 2)
+        )
+
+    async def screen_conflicts(
+        self, draft: GroundedAnswerDraft
+    ) -> tuple[ConflictCandidate, ...]:
+        claim_pairs = [
+            (left, right)
+            for index, left in enumerate(draft.claims)
+            for right in draft.claims[index + 1:]
+        ]
+        scored = await self.verify_fidelity(tuple(
+            (left.text, right.text) for left, right in claim_pairs
+        ))
+        return tuple(
+            ConflictCandidate(
+                left_claim_id=left.claim_id,
+                right_claim_id=right.claim_id,
+                left_to_right=forward,
+                right_to_left=reverse,
+            )
+            for (left, right), (forward, reverse) in zip(
+                claim_pairs, scored, strict=True
+            )
+            if "contradicted" in (forward.verdict, reverse.verdict)
+        )
+
+    async def _score(
+        self, pairs: Sequence[ScoringPair]
+    ) -> tuple[tuple[Scores, ...], ...]:
+        if not pairs:
+            return ()
+        scored = await asyncio.to_thread(self._scorer.score, pairs)
+        if len(scored) != len(pairs) or any(not windows for windows in scored):
+            raise RuntimeError("NLI scorer returned incomplete text-pair results")
+        return scored
+
+    @staticmethod
+    def _evidence_pair(evidence: EvidenceCandidate, claim: str) -> ScoringPair:
+        heading = " > ".join(evidence.heading_path)
+        prefix = (
+            f"Document title: {evidence.title}\n"
+            f"Section: {heading or '(none)'}\n\nPassage:\n"
+        )
+        return evidence.text, claim, prefix
+
     def _citation(
         self, chunk_id: UUID, windows: tuple[Scores, ...]
     ) -> CitationVerification:
+        result = self._text_pair(windows)
+        return CitationVerification(chunk_id=chunk_id, **result.model_dump())
+
+    def _text_pair(self, windows: tuple[Scores, ...]) -> TextPairVerification:
         if any(
             len(scores) != 3
             or any(not math.isfinite(value) or value < 0 or value > 1 for value in scores)
@@ -107,8 +174,7 @@ class ClaimVerificationService:
             decisive, verdict = entailment, "entailed"
         else:
             decisive, verdict = max(windows, key=lambda item: item[2]), "insufficient_evidence"
-        return CitationVerification(
-            chunk_id=chunk_id,
+        return TextPairVerification(
             verdict=verdict,
             entailment_score=decisive[0],
             contradiction_score=decisive[1],
@@ -131,10 +197,10 @@ class _CrossEncoderScorer:
         self._lock = Lock()
 
     def score(
-        self, pairs: Sequence[tuple[EvidenceCandidate, str]]
+        self, pairs: Sequence[ScoringPair]
     ) -> tuple[tuple[Scores, ...], ...]:
         model = self._load()
-        grouped = [self._windows(evidence, claim) for evidence, claim in pairs]
+        grouped = [self._windows(*pair) for pair in pairs]
         flat = [pair for windows in grouped for pair in windows]
         from torch.nn import Identity
 
@@ -154,37 +220,35 @@ class _CrossEncoderScorer:
         return tuple(output)
 
     def _windows(
-        self, evidence: EvidenceCandidate, claim: str
+        self, premise: str, hypothesis: str, prefix: str
     ) -> list[tuple[str, str]]:
         tokenizer, model = self._model.tokenizer, self._model
-        claim_tokens = tokenizer(claim, add_special_tokens=False)["input_ids"]
-        heading = " > ".join(evidence.heading_path)
-        metadata = f"Document title: {evidence.title}\nSection: {heading or '(none)'}\n\nPassage:\n"
-        metadata_tokens = tokenizer(
-            metadata, add_special_tokens=False
+        hypothesis_tokens = tokenizer(
+            hypothesis, add_special_tokens=False
+        )["input_ids"]
+        prefix_tokens = tokenizer(
+            prefix, add_special_tokens=False
         )["input_ids"][:self._METADATA_LIMIT]
-        metadata = tokenizer.decode(metadata_tokens, skip_special_tokens=True)
+        prefix = tokenizer.decode(prefix_tokens, skip_special_tokens=True)
         budget = (
             model.max_seq_length
-            - len(claim_tokens)
-            - len(metadata_tokens)
+            - len(hypothesis_tokens)
+            - len(prefix_tokens)
             - tokenizer.num_special_tokens_to_add(pair=True)
             - 4
         )
         if budget < 1:
-            raise ValueError("Answer claim exceeds the NLI model token limit")
-        passage = tokenizer(
-            evidence.text, add_special_tokens=False
-        )["input_ids"]
+            raise ValueError("NLI hypothesis exceeds the model token limit")
+        passage = tokenizer(premise, add_special_tokens=False)["input_ids"]
         step = max(1, budget - min(self._OVERLAP, budget // 2))
         return [
             (
-                metadata + tokenizer.decode(
+                prefix + tokenizer.decode(
                     passage[start:start + budget],
                     skip_special_tokens=True,
                     clean_up_tokenization_spaces=False,
                 ),
-                claim,
+                hypothesis,
             )
             for start in range(0, len(passage), step)
             if passage[start:start + budget]

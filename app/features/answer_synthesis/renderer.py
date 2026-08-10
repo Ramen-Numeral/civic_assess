@@ -21,13 +21,13 @@ def render_grounded_answer(
 
     sections = []
     if draft.claims:
-        lines = ["Answer"]
+        sentences = []
         for claim in draft.claims:
             markers = "".join(
                 f"[{numbers[chunk_id]}]" for chunk_id in claim.supporting_chunk_ids
             )
-            lines.append(f"- {claim.text} {markers}")
-        sections.append("\n".join(lines))
+            sentences.append(f"{claim.text} {markers}")
+        sections.append(" ".join(sentences))
     else:
         sections.append(
             "The available evidence did not support a sufficiently verified "

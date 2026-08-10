@@ -36,6 +36,7 @@ from app.orchestration.research import ResearchCoordinator
 from app.prompts.factory import (
     build_conversation_state_prompt,
     build_answer_repair_prompt,
+    build_answer_composition_prompt,
     build_answer_synthesis_prompt,
     build_evidence_coverage_prompt,
     build_gap_query_planning_prompt,
@@ -98,6 +99,7 @@ def build_application(settings: Settings | None = None) -> Application:
         llm=llms[AgentRole.ANSWER_WRITER],
         prompt=build_answer_synthesis_prompt(),
         repair_prompt=build_answer_repair_prompt(),
+        composition_prompt=build_answer_composition_prompt(),
     )
     claim_verification = ClaimVerificationService(
         resolved.claim_nli_model_id,

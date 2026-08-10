@@ -57,6 +57,43 @@ class CitationVerification(BaseModel):
         return self
 
 
+class TextPairVerification(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    verdict: EntailmentVerdict
+    entailment_score: float = Field(ge=0, le=1, allow_inf_nan=False)
+    contradiction_score: float = Field(ge=0, le=1, allow_inf_nan=False)
+    neutral_score: float = Field(ge=0, le=1, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def require_probability_distribution(self) -> "TextPairVerification":
+        if abs(
+            self.entailment_score
+            + self.contradiction_score
+            + self.neutral_score
+            - 1
+        ) > 1e-5:
+            raise ValueError("Text-pair scores must form one probability distribution")
+        return self
+
+
+class ConflictCandidate(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    left_claim_id: UUID
+    right_claim_id: UUID
+    left_to_right: TextPairVerification
+    right_to_left: TextPairVerification
+
+    @computed_field
+    @property
+    def contradiction_score(self) -> float:
+        return max(
+            self.left_to_right.contradiction_score,
+            self.right_to_left.contradiction_score,
+        )
+
+
 class ClaimVerification(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
