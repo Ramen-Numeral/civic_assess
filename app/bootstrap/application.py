@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from config.settings import Settings, load_application_config
 from app.application import ChatInteractionService
 from app.features.answer_synthesis import AnswerSynthesisService
+from app.features.claim_verification import ClaimVerificationService
 from app.features.conversation_context import ConversationContextService
 from app.features.conversation_memory import ConversationService
 from app.features.conversation_state import (
@@ -52,6 +53,7 @@ class Application:
     conversations: ConversationService
     conversation_contexts: ConversationContextService
     answer_synthesis: AnswerSynthesisService
+    claim_verification: ClaimVerificationService
     evidence_coverage: EvidenceCoverageService
     evidence_retrieval: EvidenceRetrievalService
     research: ResearchCoordinator
@@ -92,6 +94,14 @@ def build_application(settings: Settings | None = None) -> Application:
     answer_synthesis = AnswerSynthesisService(
         llm=llms[AgentRole.ANSWER_WRITER],
         prompt=build_answer_synthesis_prompt(),
+    )
+    claim_verification = ClaimVerificationService(
+        resolved.claim_nli_model_id,
+        resolved.claim_nli_model_revision,
+        batch_size=resolved.claim_nli_batch_size,
+        device=resolved.claim_nli_device,
+        entailment_threshold=resolved.claim_nli_entailment_threshold,
+        contradiction_threshold=resolved.claim_nli_contradiction_threshold,
     )
     query_planner = QueryDiversificationService(
         llm=llms[AgentRole.QUERY_DIVERSIFIER],
@@ -175,6 +185,7 @@ def build_application(settings: Settings | None = None) -> Application:
         conversations=conversations,
         conversation_contexts=conversation_contexts,
         answer_synthesis=answer_synthesis,
+        claim_verification=claim_verification,
         evidence_coverage=evidence_coverage,
         evidence_retrieval=evidence_retrieval,
         research=research,
