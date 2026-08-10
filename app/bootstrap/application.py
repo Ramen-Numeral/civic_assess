@@ -32,6 +32,7 @@ from app.orchestration.orchestrator import ChatOrchestrator
 from app.prompts.factory import (
     build_conversation_state_prompt,
     build_evidence_coverage_prompt,
+    build_gap_query_planning_prompt,
     build_input_validation_prompt,
     build_query_diversification_prompt,
     build_query_reframe_prompts,
@@ -136,6 +137,7 @@ def build_application(settings: Settings | None = None) -> Application:
         QueryDiversificationService(
             llm=llms[AgentRole.QUERY_DIVERSIFIER],
             prompt=build_query_diversification_prompt(),
+            gap_prompt=build_gap_query_planning_prompt(),
             query_count=resolved.diversified_research_query_count,
         ),
         research_acquisition=research_acquisition,

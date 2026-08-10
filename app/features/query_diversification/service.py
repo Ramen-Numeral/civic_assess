@@ -14,6 +14,7 @@ from app.features.query_diversification.errors import (
     QueryDiversificationError,
 )
 from app.features.query_diversification.schemas import (
+    GapDirectedQueryPlanningRequest,
     QueryDiversificationProposal,
     QueryDiversificationRequest,
 )
@@ -32,12 +33,14 @@ class QueryDiversificationService:
         *,
         llm: LLMClient,
         prompt: Prompt,
+        gap_prompt: Prompt,
         query_count: int,
     ) -> None:
         if not 3 <= query_count <= 5:
             raise ValueError("query_count must be between 3 and 5")
         self._llm = llm
         self._prompt = prompt
+        self._gap_prompt = gap_prompt
         self._query_count = query_count
 
     async def diversify(
@@ -57,12 +60,48 @@ class QueryDiversificationService:
                 )
             ),
         ]
+        proposal = await self._propose(messages)
+        self._validate(
+            request.validated_query,
+            proposal,
+            minimum=1,
+            allowed_text=request.validated_query,
+        )
+        return self._query_set(request.validated_query, proposal)
+
+    async def plan_for_gaps(
+        self,
+        request: GapDirectedQueryPlanningRequest,
+    ) -> ResearchQuerySet:
+        messages = [
+            SystemMessage(content=self._gap_prompt.build(
+                diversified_query_count=self._query_count,
+            )),
+            HumanMessage(content=json.dumps({
+                "canonical_query": request.canonical_query,
+                "gaps": [gap.model_dump(mode="json") for gap in request.gaps],
+            }, ensure_ascii=False)),
+        ]
+        proposal = await self._propose(messages)
+        allowed_text = " ".join([
+            request.canonical_query,
+            *(value for gap in request.gaps for value in (
+                gap.description, gap.research_goal,
+            )),
+        ])
+        self._validate(
+            request.canonical_query,
+            proposal,
+            minimum=0,
+            allowed_text=allowed_text,
+        )
+        return self._query_set(request.canonical_query, proposal)
+
+    async def _propose(self, messages) -> QueryDiversificationProposal:
         try:
-            proposal = await self._llm.invoke_structured(
-                messages,
-                QueryDiversificationProposal,
+            return await self._llm.invoke_structured(
+                messages, QueryDiversificationProposal,
             )
-            self._validate_proposal(request.validated_query, proposal)
         except LLMError as exc:
             if exc.failures and all(
                 failure.kind is FailureKind.INVALID_OUTPUT
@@ -78,13 +117,38 @@ class QueryDiversificationService:
             ) from exc
         except ValueError as exc:
             raise InvalidQueryDiversificationError(
+                "Diversifier returned invalid structured output"
+            ) from exc
+
+    def _validate(
+        self,
+        original_query: str,
+        proposal: QueryDiversificationProposal,
+        *,
+        minimum: int,
+        allowed_text: str,
+    ) -> None:
+        try:
+            self._validate_proposal(
+                original_query,
+                proposal,
+                minimum=minimum,
+                allowed_text=allowed_text,
+            )
+        except ValueError as exc:
+            raise InvalidQueryDiversificationError(
                 "Diversifier output violated query invariants"
             ) from exc
 
+    @staticmethod
+    def _query_set(
+        original_query: str,
+        proposal: QueryDiversificationProposal,
+    ) -> ResearchQuerySet:
         return ResearchQuerySet(
             original_query=OriginalResearchQuery(
                 query_id=uuid4(),
-                text=request.validated_query,
+                text=original_query,
             ),
             diversified_queries=tuple(
                 DiversifiedResearchQuery(
@@ -101,9 +165,12 @@ class QueryDiversificationService:
         self,
         original_query: str,
         proposal: QueryDiversificationProposal,
+        *,
+        minimum: int,
+        allowed_text: str,
     ) -> None:
-        if not 1 <= len(proposal.queries) <= self._query_count:
-            raise ValueError("Diversifier returned no queries or exceeded its target")
+        if not minimum <= len(proposal.queries) <= self._query_count:
+            raise ValueError("Diversifier returned an invalid query count")
 
         normalized_original = _normalize(original_query)
         normalized_queries = [_normalize(query.text) for query in proposal.queries]
@@ -117,7 +184,7 @@ class QueryDiversificationService:
         if normalized_original in normalized_queries:
             raise ValueError("Diversified query must differ from the original")
 
-        allowed_numbers = _numbers(original_query)
+        allowed_numbers = _numbers(allowed_text)
         for query in proposal.queries:
             if not _numbers(query.text) <= allowed_numbers:
                 raise ValueError("Diversified query introduced an unsupported number")

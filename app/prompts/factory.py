@@ -49,6 +49,14 @@ def build_query_diversification_prompt() -> Prompt:
     )
 
 
+def build_gap_query_planning_prompt() -> Prompt:
+    return Prompt(
+        name="gap_query_planning",
+        description="Translate evidence gaps into bounded research queries.",
+        template_path=PROMPT_DIR / "gap_query_planning.md",
+    )
+
+
 def build_evidence_coverage_prompt() -> Prompt:
     return Prompt(
         name="evidence_coverage",
