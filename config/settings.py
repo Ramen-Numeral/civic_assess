@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Literal
 
 from dotenv import dotenv_values
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.roles import AgentRole
@@ -41,10 +41,30 @@ class Settings(BaseSettings):
     )
     evidence_embedding_batch_size: int = Field(default=32, ge=1, le=256)
     evidence_embedding_device: str = Field(default="cpu", min_length=1)
+    evidence_lexical_candidate_count: int = Field(default=20, ge=1)
+    evidence_semantic_candidate_count: int = Field(default=20, ge=1)
+    evidence_rrf_k: int = Field(default=60, ge=1)
+    evidence_rrf_lexical_weight: float = Field(
+        default=1.0, ge=0, allow_inf_nan=False
+    )
+    evidence_rrf_semantic_weight: float = Field(
+        default=1.0, ge=0, allow_inf_nan=False
+    )
+    evidence_coverage_candidate_count: int = Field(default=12, ge=1)
+    evidence_max_chunks_per_document: int = Field(default=2, ge=1)
     routes: Routes
     provider_credentials: Mapping[ModelProvider, SecretStr]
 
     model_config = SettingsConfigDict(extra="forbid", frozen=True)
+
+    @model_validator(mode="after")
+    def require_retrieval_modality(self) -> "Settings":
+        if not (
+            self.evidence_rrf_lexical_weight
+            or self.evidence_rrf_semantic_weight
+        ):
+            raise ValueError("At least one evidence retrieval weight must be positive")
+        return self
 
 
 def load_application_config(
@@ -126,6 +146,25 @@ def load_application_config(
             "EVIDENCE_EMBEDDING_BATCH_SIZE", 32
         ),
         evidence_embedding_device=values.get("EVIDENCE_EMBEDDING_DEVICE", "cpu"),
+        evidence_lexical_candidate_count=values.get(
+            "EVIDENCE_LEXICAL_CANDIDATE_COUNT", 20
+        ),
+        evidence_semantic_candidate_count=values.get(
+            "EVIDENCE_SEMANTIC_CANDIDATE_COUNT", 20
+        ),
+        evidence_rrf_k=values.get("EVIDENCE_RRF_K", 60),
+        evidence_rrf_lexical_weight=values.get(
+            "EVIDENCE_RRF_LEXICAL_WEIGHT", 1.0
+        ),
+        evidence_rrf_semantic_weight=values.get(
+            "EVIDENCE_RRF_SEMANTIC_WEIGHT", 1.0
+        ),
+        evidence_coverage_candidate_count=values.get(
+            "EVIDENCE_COVERAGE_CANDIDATE_COUNT", 12
+        ),
+        evidence_max_chunks_per_document=values.get(
+            "EVIDENCE_MAX_CHUNKS_PER_DOCUMENT", 2
+        ),
         routes=routes,
         provider_credentials=credentials,
     )

@@ -13,6 +13,7 @@ from app.features.input_validation.service import InputValidationService
 from app.features.evidence_ingestion.chunker import MarkdownChunker
 from app.features.evidence_ingestion.embedder import EvidenceEmbedder
 from app.features.evidence_ingestion.service import EvidenceIngestionService
+from app.features.evidence_retrieval.service import EvidenceRetrievalService
 from app.features.query_diversification.service import QueryDiversificationService
 from app.features.query_reframe.service import QueryReframeService
 from app.features.query_resolution.service import QueryResolutionService
@@ -44,6 +45,7 @@ class Application:
     database: SQLiteDatabase
     conversations: ConversationService
     conversation_contexts: ConversationContextService
+    evidence_retrieval: EvidenceRetrievalService | None
     chat_interactions: ChatInteractionService
 
 
@@ -86,20 +88,31 @@ def build_application(settings: Settings | None = None) -> Application:
         else None
     )
     evidence_repository = SQLiteEvidenceRepository(database)
-    evidence_ingestion = (
-        EvidenceIngestionService(
+    evidence_ingestion = None
+    evidence_retrieval = None
+    if research_acquisition is not None:
+        evidence_embedder = EvidenceEmbedder(
+            resolved.evidence_embedding_model_id,
+            resolved.evidence_embedding_model_revision,
+            batch_size=resolved.evidence_embedding_batch_size,
+            device=resolved.evidence_embedding_device,
+        )
+        evidence_ingestion = EvidenceIngestionService(
             evidence_repository,
             MarkdownChunker(),
-            EvidenceEmbedder(
-                resolved.evidence_embedding_model_id,
-                resolved.evidence_embedding_model_revision,
-                batch_size=resolved.evidence_embedding_batch_size,
-                device=resolved.evidence_embedding_device,
-            ),
+            evidence_embedder,
         )
-        if research_acquisition is not None
-        else None
-    )
+        evidence_retrieval = EvidenceRetrievalService(
+            evidence_repository,
+            evidence_embedder,
+            lexical_candidate_count=resolved.evidence_lexical_candidate_count,
+            semantic_candidate_count=resolved.evidence_semantic_candidate_count,
+            rrf_k=resolved.evidence_rrf_k,
+            lexical_weight=resolved.evidence_rrf_lexical_weight,
+            semantic_weight=resolved.evidence_rrf_semantic_weight,
+            coverage_candidate_count=resolved.evidence_coverage_candidate_count,
+            max_chunks_per_document=resolved.evidence_max_chunks_per_document,
+        )
     orchestrator = ChatOrchestrator(
         InputValidationService(
             llm=llms[AgentRole.VALIDATOR],
@@ -133,5 +146,6 @@ def build_application(settings: Settings | None = None) -> Application:
         database=database,
         conversations=conversations,
         conversation_contexts=conversation_contexts,
+        evidence_retrieval=evidence_retrieval,
         chat_interactions=chat_interactions,
     )

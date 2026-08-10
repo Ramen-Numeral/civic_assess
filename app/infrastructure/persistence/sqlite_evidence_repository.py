@@ -293,13 +293,20 @@ class SQLiteEvidenceRepository(EvidenceRepository):
         expression = " OR ".join(f'"{term}"' for term in terms)
         with self._database.connect() as connection:
             rows = connection.execute(
+                "WITH discoveries AS (SELECT x.document_id, "
+                "MAX(i.ingested_at) last_discovered_at "
+                "FROM evidence_document_discoveries x "
+                "JOIN evidence_ingestions i USING (acquisition_id) "
+                "WHERE i.conversation_id = ? GROUP BY x.document_id) "
                 "SELECT c.*, d.title, d.canonical_url, "
+                "discoveries.last_discovered_at, "
                 "bm25(evidence_chunks_fts) score FROM evidence_chunks_fts "
                 "JOIN evidence_chunks c ON c.rowid = evidence_chunks_fts.rowid "
                 "JOIN evidence_documents d USING (document_id) "
+                "JOIN discoveries USING (document_id) "
                 "WHERE evidence_chunks_fts MATCH ? AND d.conversation_id = ? "
                 "ORDER BY score, c.chunk_id LIMIT ?",
-                (expression, str(conversation_id), limit),
+                (str(conversation_id), expression, str(conversation_id), limit),
             ).fetchall()
             return tuple(
                 ScoredEvidenceCandidate(
@@ -322,13 +329,20 @@ class SQLiteEvidenceRepository(EvidenceRepository):
     ) -> tuple[tuple[EvidenceCandidate, tuple[float, ...]], ...]:
         with self._database.connect() as connection:
             rows = connection.execute(
-                "SELECT c.*, d.title, d.canonical_url, e.dimension, e.vector "
+                "WITH discoveries AS (SELECT x.document_id, "
+                "MAX(i.ingested_at) last_discovered_at "
+                "FROM evidence_document_discoveries x "
+                "JOIN evidence_ingestions i USING (acquisition_id) "
+                "WHERE i.conversation_id = ? GROUP BY x.document_id) "
+                "SELECT c.*, d.title, d.canonical_url, "
+                "discoveries.last_discovered_at, e.dimension, e.vector "
                 "FROM evidence_chunk_embeddings e "
                 "JOIN evidence_chunks c USING (chunk_id) "
                 "JOIN evidence_documents d USING (document_id) "
+                "JOIN discoveries USING (document_id) "
                 "WHERE d.conversation_id = ? AND e.embedding_version = ? "
                 "ORDER BY c.chunk_id",
-                (str(conversation_id), version),
+                (str(conversation_id), str(conversation_id), version),
             ).fetchall()
             return tuple(
                 (
@@ -353,6 +367,7 @@ def _candidate(row) -> EvidenceCandidate:
         heading_path=tuple(json.loads(row["heading_path"])),
         start_offset=row["start_offset"],
         end_offset=row["end_offset"],
+        last_discovered_at=row["last_discovered_at"],
     )
 
 
