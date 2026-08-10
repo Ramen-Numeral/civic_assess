@@ -1,5 +1,6 @@
 import hashlib
 import re
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from uuid import UUID, uuid5
 
@@ -21,8 +22,6 @@ class _Span:
 
 
 class MarkdownChunker:
-    version = "markdown-v1"
-
     def __init__(
         self,
         *,
@@ -30,6 +29,8 @@ class MarkdownChunker:
         max_units: int = 450,
         overlap_units: int = 64,
         min_units: int = 100,
+        unit_spans: Callable[[str], Sequence[tuple[int, int]]] | None = None,
+        unit_version: str = "whitespace",
     ) -> None:
         if not 0 <= overlap_units < target_units <= max_units:
             raise ValueError("chunk limits require overlap < target <= maximum")
@@ -39,6 +40,8 @@ class MarkdownChunker:
         self._maximum = max_units
         self._overlap = overlap_units
         self._minimum = min_units
+        self._unit_spans = unit_spans or self._whitespace_spans
+        self.version = f"markdown-v2:{unit_version}"
 
     def chunk(self, document_id: UUID, content: str) -> tuple[EvidenceChunk, ...]:
         spans = self._atomic_spans(content)
@@ -103,12 +106,12 @@ class MarkdownChunker:
             if self._count(content[sentence.start:sentence.end]) <= self._maximum:
                 result.append(sentence)
                 continue
-            units = list(UNIT.finditer(content[sentence.start:sentence.end]))
+            units = self._unit_spans(content[sentence.start:sentence.end])
             for offset in range(0, len(units), self._maximum):
                 window = units[offset:offset + self._maximum]
                 result.append(_Span(
-                    sentence.start + window[0].start(),
-                    sentence.start + window[-1].end(),
+                    sentence.start + window[0][0],
+                    sentence.start + window[-1][1],
                     span.heading_path,
                 ))
         return result
@@ -124,10 +127,10 @@ class MarkdownChunker:
         if overlap <= 0:
             return []
         last = spans[-1]
-        units = list(UNIT.finditer(content[last.start:last.end]))
+        units = self._unit_spans(content[last.start:last.end])
         if len(units) <= overlap:
             return [last]
-        start = last.start + units[-overlap].start()
+        start = last.start + units[-overlap][0]
         return [_Span(start, last.end, last.heading_path)]
 
     def _merge_small_tail(
@@ -174,6 +177,9 @@ class MarkdownChunker:
             return 0
         return self._count(content[spans[0].start:spans[-1].end])
 
+    def _count(self, text: str) -> int:
+        return len(self._unit_spans(text))
+
     @staticmethod
-    def _count(text: str) -> int:
-        return len(UNIT.findall(text))
+    def _whitespace_spans(text: str) -> tuple[tuple[int, int], ...]:
+        return tuple(match.span() for match in UNIT.finditer(text))

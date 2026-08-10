@@ -20,8 +20,26 @@ class EvidenceEmbedder:
         self.dimension = self._model.get_embedding_dimension()
         if self.dimension is None:
             raise ValueError("Embedding model does not declare its dimension")
+        self.tokenization_version = f"{model_id}@{revision}"
         self.version = f"{model_id}@{revision}:document:normalized-float32"
         self.batch_size = batch_size
+
+    def token_spans(self, text: str) -> tuple[tuple[int, int], ...]:
+        encoded = self._model.tokenizer(
+            text,
+            add_special_tokens=False,
+            return_offsets_mapping=True,
+            truncation=False,
+            verbose=False,
+        )
+        offsets = encoded.get("offset_mapping")
+        if offsets is None:
+            raise ValueError("Embedding tokenizer does not provide offset mappings")
+        return tuple(
+            (int(start), int(end))
+            for start, end in offsets
+            if end > start
+        )
 
     async def embed(self, texts: Sequence[str]) -> tuple[tuple[float, ...], ...]:
         return await asyncio.to_thread(self._embed, list(texts), False)

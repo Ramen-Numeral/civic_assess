@@ -86,7 +86,7 @@ class QueryDiversificationService:
         allowed_text = " ".join([
             request.canonical_query,
             *(value for gap in request.gaps for value in (
-                gap.description, gap.research_goal,
+                gap.description, gap.evidence_requirement,
             )),
         ])
         self._validate(

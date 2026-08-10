@@ -25,14 +25,16 @@ class EvidenceCoverageService:
         self,
         request: EvidenceCoverageRequest,
     ) -> EvidenceCoverageAssessment:
-        candidates = request.retrieval.ranked_candidates
-        if not candidates:
+        evidence = request.evidence_frontier
+        if not evidence:
             return EvidenceCoverageAssessment(
                 sufficient=False,
                 gaps=(EvidenceGap(
                     description="No local evidence is available to ground an answer.",
-                    research_goal=(
-                        f"Acquire reliable evidence addressing: {request.canonical_query}"
+                    evidence_requirement=(
+                        "Evidence that directly satisfies the canonical query, "
+                        "rather than only providing topical background: "
+                        f"{request.canonical_query}"
                     ),
                 ),),
             )
@@ -40,17 +42,17 @@ class EvidenceCoverageService:
             SystemMessage(content=self._prompt.build()),
             HumanMessage(content=json.dumps({
                 "canonical_query": request.canonical_query,
-                "ranked_evidence": [
+                "evidence": [
                     {
-                        "rank": candidate.rank,
-                        "chunk_id": str(candidate.evidence.chunk_id),
-                        "document_id": str(candidate.evidence.document_id),
-                        "title": candidate.evidence.title,
-                        "canonical_url": str(candidate.evidence.canonical_url),
-                        "heading_path": candidate.evidence.heading_path,
-                        "text": candidate.evidence.text,
+                        "position": position,
+                        "chunk_id": str(candidate.chunk_id),
+                        "document_id": str(candidate.document_id),
+                        "title": candidate.title,
+                        "canonical_url": str(candidate.canonical_url),
+                        "heading_path": candidate.heading_path,
+                        "text": candidate.text,
                     }
-                    for candidate in candidates
+                    for position, candidate in enumerate(evidence, start=1)
                 ],
             }, ensure_ascii=False)),
         ]
@@ -59,7 +61,7 @@ class EvidenceCoverageService:
                 messages,
                 EvidenceCoverageAssessment,
             )
-            allowed = {candidate.evidence.chunk_id for candidate in candidates}
+            allowed = {candidate.chunk_id for candidate in evidence}
             if any(
                 chunk_id not in allowed
                 for point in assessment.covered_points

@@ -1,7 +1,4 @@
 from app.domain.validation import Disposition
-from app.features.evidence_ingestion.service import EvidenceIngestionService
-from app.features.query_diversification.schemas import QueryDiversificationRequest
-from app.features.query_diversification.service import QueryDiversificationService
 from app.features.input_validation.errors import InputValidationError
 from app.features.input_validation.preflight import preflight_input
 from app.features.input_validation.schemas import InputValidationRequest
@@ -17,8 +14,8 @@ from app.features.query_reframe.service import (
 )
 from app.features.query_resolution.schemas import QueryResolutionRequest
 from app.features.query_resolution.service import QueryResolutionService
-from app.features.research_acquisition.service import ResearchAcquisitionService
 from app.orchestration.instrumentation import AgentNode, log_route
+from app.orchestration.research import ResearchCoordinator
 from app.orchestration.state import ChatRoute, ChatState
 
 
@@ -106,42 +103,17 @@ def build_query_resolution_node(
     return resolve_query
 
 
-def build_query_diversification_node(
-    service: QueryDiversificationService,
+def build_research_node(
+    coordinator: ResearchCoordinator,
 ) -> AgentNode[ChatState]:
-    async def diversify_query(state: ChatState) -> dict[str, object]:
-        result = await service.diversify(
-            QueryDiversificationRequest(
-                validated_query=state["gate_result"].normalized_query,
-            )
-        )
-        return {"research_query_set": result}
-
-    return diversify_query
-
-
-def build_research_acquisition_node(
-    service: ResearchAcquisitionService,
-) -> AgentNode[ChatState]:
-    async def acquire_research(state: ChatState) -> dict[str, object]:
-        result = await service.acquire(state["research_query_set"])
-        return {"research_acquisition": result}
-
-    return acquire_research
-
-
-def build_evidence_ingestion_node(
-    service: EvidenceIngestionService,
-) -> AgentNode[ChatState]:
-    async def ingest_evidence(state: ChatState) -> dict[str, object]:
-        result = await service.ingest(
+    async def research(state: ChatState) -> dict[str, object]:
+        result = await coordinator.research(
             conversation_id=state["conversation_context"].conversation_id,
-            query_set=state["research_query_set"],
-            acquisition=state["research_acquisition"],
+            canonical_query=state["gate_result"].normalized_query,
         )
-        return {"evidence_ingestion": result}
+        return {"research_result": result}
 
-    return ingest_evidence
+    return research
 
 
 def build_query_reframe_node(

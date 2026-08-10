@@ -29,6 +29,7 @@ from app.infrastructure.persistence import (
 from app.infrastructure.search import TavilySearchClient
 from app.observability.logging import configure_logging
 from app.orchestration.orchestrator import ChatOrchestrator
+from app.orchestration.research import ResearchCoordinator
 from app.prompts.factory import (
     build_conversation_state_prompt,
     build_evidence_coverage_prompt,
@@ -50,6 +51,7 @@ class Application:
     conversation_contexts: ConversationContextService
     evidence_coverage: EvidenceCoverageService
     evidence_retrieval: EvidenceRetrievalService | None
+    research: ResearchCoordinator | None
     chat_interactions: ChatInteractionService
 
 
@@ -84,6 +86,12 @@ def build_application(settings: Settings | None = None) -> Application:
         llm=llms[AgentRole.EVIDENCE_COVERAGE],
         prompt=build_evidence_coverage_prompt(),
     )
+    query_planner = QueryDiversificationService(
+        llm=llms[AgentRole.QUERY_DIVERSIFIER],
+        prompt=build_query_diversification_prompt(),
+        gap_prompt=build_gap_query_planning_prompt(),
+        query_count=resolved.diversified_research_query_count,
+    )
     research_acquisition = (
         ResearchAcquisitionService(
             TavilySearchClient(
@@ -98,6 +106,7 @@ def build_application(settings: Settings | None = None) -> Application:
     evidence_repository = SQLiteEvidenceRepository(database)
     evidence_ingestion = None
     evidence_retrieval = None
+    research = None
     if research_acquisition is not None:
         evidence_embedder = EvidenceEmbedder(
             resolved.evidence_embedding_model_id,
@@ -107,7 +116,10 @@ def build_application(settings: Settings | None = None) -> Application:
         )
         evidence_ingestion = EvidenceIngestionService(
             evidence_repository,
-            MarkdownChunker(),
+            MarkdownChunker(
+                unit_spans=evidence_embedder.token_spans,
+                unit_version=evidence_embedder.tokenization_version,
+            ),
             evidence_embedder,
         )
         evidence_retrieval = EvidenceRetrievalService(
@@ -120,6 +132,14 @@ def build_application(settings: Settings | None = None) -> Application:
             semantic_weight=resolved.evidence_rrf_semantic_weight,
             coverage_candidate_count=resolved.evidence_coverage_candidate_count,
             max_chunks_per_document=resolved.evidence_max_chunks_per_document,
+        )
+        research = ResearchCoordinator(
+            evidence_retrieval,
+            evidence_coverage,
+            query_planner,
+            research_acquisition,
+            evidence_ingestion,
+            max_acquisition_rounds=resolved.research_max_acquisition_rounds,
         )
     orchestrator = ChatOrchestrator(
         InputValidationService(
@@ -134,14 +154,7 @@ def build_application(settings: Settings | None = None) -> Application:
             llm=llms[AgentRole.QUERY_RESOLVER],
             prompt=build_query_resolution_prompt(),
         ),
-        QueryDiversificationService(
-            llm=llms[AgentRole.QUERY_DIVERSIFIER],
-            prompt=build_query_diversification_prompt(),
-            gap_prompt=build_gap_query_planning_prompt(),
-            query_count=resolved.diversified_research_query_count,
-        ),
-        research_acquisition=research_acquisition,
-        evidence_ingestion=evidence_ingestion,
+        research=research,
     )
     chat_interactions = ChatInteractionService(
         conversations,
@@ -157,5 +170,6 @@ def build_application(settings: Settings | None = None) -> Application:
         conversation_contexts=conversation_contexts,
         evidence_coverage=evidence_coverage,
         evidence_retrieval=evidence_retrieval,
+        research=research,
         chat_interactions=chat_interactions,
     )

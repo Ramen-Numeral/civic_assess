@@ -1,13 +1,11 @@
 from enum import StrEnum
 from typing import NotRequired, TypedDict
 
-from app.domain.acquisition import ResearchAcquisitionSet
 from app.domain.conversation import ConversationContext
-from app.domain.research import ResearchQuerySet
 from app.domain.validation import InputGateResult
-from app.features.evidence_ingestion.schemas import EvidenceIngestionSnapshot
 from app.features.query_reframe.schemas import QueryReframeProposal
 from app.features.query_resolution.schemas import QueryResolutionResult
+from app.orchestration.research import ResearchResult
 
 
 class ChatRoute(StrEnum):
@@ -22,9 +20,7 @@ class ChatState(TypedDict):
     normalized_request: NotRequired[str]
     query_resolution: NotRequired[QueryResolutionResult]
     gate_result: NotRequired[InputGateResult]
-    research_query_set: NotRequired[ResearchQuerySet]
-    research_acquisition: NotRequired[ResearchAcquisitionSet]
-    evidence_ingestion: NotRequired[EvidenceIngestionSnapshot]
+    research_result: NotRequired[ResearchResult]
     query_reframe_proposal: NotRequired[QueryReframeProposal]
     proposal_gate_result: NotRequired[InputGateResult]
     chat_route: NotRequired[ChatRoute]

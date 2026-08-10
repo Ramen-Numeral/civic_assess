@@ -4,14 +4,14 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.domain.validation import NonBlankText
-from app.features.evidence_retrieval.schemas import EvidenceRetrievalSet
+from app.features.evidence_retrieval.schemas import EvidenceCandidate
 
 
 class EvidenceCoverageRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     canonical_query: NonBlankText
-    retrieval: EvidenceRetrievalSet
+    evidence_frontier: tuple[EvidenceCandidate, ...] = ()
 
 
 class CoveredEvidencePoint(BaseModel):
@@ -31,7 +31,7 @@ class EvidenceGap(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     description: NonBlankText
-    research_goal: NonBlankText
+    evidence_requirement: NonBlankText
 
 
 class EvidenceCoverageAssessment(BaseModel):
@@ -51,8 +51,8 @@ class EvidenceCoverageAssessment(BaseModel):
             raise ValueError("Covered points must be distinct")
         if _duplicates(gap.description for gap in self.gaps):
             raise ValueError("Gap descriptions must be distinct")
-        if _duplicates(gap.research_goal for gap in self.gaps):
-            raise ValueError("Gap research goals must be distinct")
+        if _duplicates(gap.evidence_requirement for gap in self.gaps):
+            raise ValueError("Gap evidence requirements must be distinct")
         return self
 
 

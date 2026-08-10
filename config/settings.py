@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     conversation_summarizer_raw_turn_count: int = Field(default=6, ge=0, le=50)
     diversified_research_query_count: int = Field(default=4, ge=3, le=5)
     research_results_per_query: int = Field(default=5, ge=1, le=5)
+    research_max_acquisition_rounds: int = Field(default=2, ge=0, le=3)
     tavily_timeout_seconds: float = Field(default=20, gt=0, le=60)
     tavily_api_key: SecretStr | None = None
     evidence_embedding_model_id: str = Field(
@@ -132,6 +133,10 @@ def load_application_config(
         research_results_per_query=values.get(
             "RESEARCH_RESULTS_PER_QUERY",
             5,
+        ),
+        research_max_acquisition_rounds=values.get(
+            "RESEARCH_MAX_ACQUISITION_ROUNDS",
+            2,
         ),
         tavily_timeout_seconds=values.get("TAVILY_TIMEOUT_SECONDS", 20),
         tavily_api_key=SecretStr(tavily_key) if tavily_key else None,
