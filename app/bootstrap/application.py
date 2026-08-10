@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from config.settings import Settings, load_application_config
 from app.application import ChatInteractionService
+from app.features.answer_synthesis import AnswerSynthesisService
 from app.features.conversation_context import ConversationContextService
 from app.features.conversation_memory import ConversationService
 from app.features.conversation_state import (
@@ -32,6 +33,7 @@ from app.orchestration.orchestrator import ChatOrchestrator
 from app.orchestration.research import ResearchCoordinator
 from app.prompts.factory import (
     build_conversation_state_prompt,
+    build_answer_synthesis_prompt,
     build_evidence_coverage_prompt,
     build_gap_query_planning_prompt,
     build_input_validation_prompt,
@@ -49,6 +51,7 @@ class Application:
     database: SQLiteDatabase
     conversations: ConversationService
     conversation_contexts: ConversationContextService
+    answer_synthesis: AnswerSynthesisService
     evidence_coverage: EvidenceCoverageService
     evidence_retrieval: EvidenceRetrievalService
     research: ResearchCoordinator
@@ -85,6 +88,10 @@ def build_application(settings: Settings | None = None) -> Application:
     evidence_coverage = EvidenceCoverageService(
         llm=llms[AgentRole.EVIDENCE_COVERAGE],
         prompt=build_evidence_coverage_prompt(),
+    )
+    answer_synthesis = AnswerSynthesisService(
+        llm=llms[AgentRole.ANSWER_WRITER],
+        prompt=build_answer_synthesis_prompt(),
     )
     query_planner = QueryDiversificationService(
         llm=llms[AgentRole.QUERY_DIVERSIFIER],
@@ -167,6 +174,7 @@ def build_application(settings: Settings | None = None) -> Application:
         database=database,
         conversations=conversations,
         conversation_contexts=conversation_contexts,
+        answer_synthesis=answer_synthesis,
         evidence_coverage=evidence_coverage,
         evidence_retrieval=evidence_retrieval,
         research=research,

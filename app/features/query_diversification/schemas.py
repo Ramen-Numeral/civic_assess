@@ -47,6 +47,7 @@ class ProposedResearchRequirement(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     description: PlanningText
+    evidence_expectation: PlanningText | None = None
     evidence_angles: tuple[ProposedEvidenceAngle, ...] = Field(min_length=1)
 
 

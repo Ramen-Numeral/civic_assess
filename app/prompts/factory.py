@@ -65,6 +65,14 @@ def build_evidence_coverage_prompt() -> Prompt:
     )
 
 
+def build_answer_synthesis_prompt() -> Prompt:
+    return Prompt(
+        name="answer_synthesis",
+        description="Draft atomic claims from grounded evidence.",
+        template_path=PROMPT_DIR / "answer_synthesis.md",
+    )
+
+
 def build_conversation_state_prompt() -> Prompt:
     return Prompt(
         name="conversation_state",

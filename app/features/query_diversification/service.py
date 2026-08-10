@@ -93,6 +93,7 @@ class QueryDiversificationService:
             requirements.append(ResearchRequirement(
                 requirement_id=requirement_id,
                 description=proposed.description,
+                evidence_expectation=proposed.evidence_expectation,
                 evidence_angles=tuple(angles),
             ))
         original_query = OriginalResearchQuery(
@@ -127,6 +128,9 @@ class QueryDiversificationService:
                 "gaps": [{
                     "ref": ref,
                     "requirement": requirements[gap.requirement_id].description,
+                    "evidence_expectation": requirements[
+                        gap.requirement_id
+                    ].evidence_expectation,
                     "investigated_angles": list(
                         requirements[gap.requirement_id].evidence_angles
                     ),
@@ -139,6 +143,11 @@ class QueryDiversificationService:
         allowed_text = " ".join([
             request.original_query.text,
             *(requirement.description for requirement in request.requirements),
+            *(
+                requirement.evidence_expectation
+                for requirement in request.requirements
+                if requirement.evidence_expectation is not None
+            ),
             *(
                 angle
                 for requirement in request.requirements
@@ -231,7 +240,15 @@ class QueryDiversificationService:
                 )
             if any(
                 not _numbers(value) <= allowed_numbers
-                for value in (requirement.description, *descriptions)
+                for value in (
+                    requirement.description,
+                    *descriptions,
+                    *(
+                        (requirement.evidence_expectation,)
+                        if requirement.evidence_expectation is not None
+                        else ()
+                    ),
+                )
             ):
                 raise InvalidQueryDiversificationError(
                     "Research plan introduced an unsupported number"

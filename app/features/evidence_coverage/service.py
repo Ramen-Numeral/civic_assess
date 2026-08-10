@@ -55,6 +55,7 @@ class EvidenceCoverageService:
                     "requirements": [{
                         "ref": ref,
                         "description": requirement.description,
+                        "evidence_expectation": requirement.evidence_expectation,
                         "investigated_angles": list(requirement.evidence_angles),
                     } for ref, requirement in requirements.items()],
                     "evidence": [{
