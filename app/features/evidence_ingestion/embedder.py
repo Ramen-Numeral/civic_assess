@@ -24,15 +24,24 @@ class EvidenceEmbedder:
         self.batch_size = batch_size
 
     async def embed(self, texts: Sequence[str]) -> tuple[tuple[float, ...], ...]:
-        return await asyncio.to_thread(self._embed, list(texts))
+        return await asyncio.to_thread(self._embed, list(texts), False)
 
-    def _embed(self, texts: list[str]) -> tuple[tuple[float, ...], ...]:
+    async def embed_queries(
+        self, texts: Sequence[str]
+    ) -> tuple[tuple[float, ...], ...]:
+        return await asyncio.to_thread(self._embed, list(texts), True)
+
+    def _embed(
+        self, texts: list[str], queries: bool
+    ) -> tuple[tuple[float, ...], ...]:
         tokens = self._model.tokenizer(texts, truncation=False)["input_ids"]
         if any(len(row) > self._model.max_seq_length for row in tokens):
             raise ValueError("Evidence chunk exceeds the embedding model token limit")
         vectors = tuple(
             tuple(vector)
-            for vector in self._model.encode_document(
+            for vector in (
+                self._model.encode_query if queries else self._model.encode_document
+            )(
                 texts,
                 batch_size=self.batch_size,
                 convert_to_numpy=True,

@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 import struct
 from datetime import datetime
 from uuid import UUID
@@ -9,6 +10,10 @@ from app.features.evidence_ingestion.schemas import (
     EvidenceIngestionBatch,
     EvidenceIngestionSnapshot,
     EvidenceWriteResult,
+)
+from app.features.evidence_retrieval.schemas import (
+    EvidenceCandidate,
+    ScoredEvidenceCandidate,
 )
 from app.infrastructure.persistence.sqlite import SQLiteDatabase
 
@@ -272,9 +277,83 @@ class SQLiteEvidenceRepository(EvidenceRepository):
             )
             return connection.total_changes - before
 
+    async def search_evidence_text(
+        self, conversation_id: UUID, query: str, limit: int
+    ) -> tuple[ScoredEvidenceCandidate, ...]:
+        return await asyncio.to_thread(
+            self._search_evidence_text, conversation_id, query, limit
+        )
+
+    def _search_evidence_text(
+        self, conversation_id: UUID, query: str, limit: int
+    ) -> tuple[ScoredEvidenceCandidate, ...]:
+        terms = tuple(dict.fromkeys(re.findall(r"\w+", query.casefold())))
+        if not terms:
+            return ()
+        expression = " OR ".join(f'"{term}"' for term in terms)
+        with self._database.connect() as connection:
+            rows = connection.execute(
+                "SELECT c.*, d.title, d.canonical_url, "
+                "bm25(evidence_chunks_fts) score FROM evidence_chunks_fts "
+                "JOIN evidence_chunks c ON c.rowid = evidence_chunks_fts.rowid "
+                "JOIN evidence_documents d USING (document_id) "
+                "WHERE evidence_chunks_fts MATCH ? AND d.conversation_id = ? "
+                "ORDER BY score, c.chunk_id LIMIT ?",
+                (expression, str(conversation_id), limit),
+            ).fetchall()
+            return tuple(
+                ScoredEvidenceCandidate(
+                    evidence=_candidate(row),
+                    rank=rank,
+                    score=row["score"],
+                )
+                for rank, row in enumerate(rows, start=1)
+            )
+
+    async def load_evidence_vectors(
+        self, conversation_id: UUID, version: str
+    ) -> tuple[tuple[EvidenceCandidate, tuple[float, ...]], ...]:
+        return await asyncio.to_thread(
+            self._load_evidence_vectors, conversation_id, version
+        )
+
+    def _load_evidence_vectors(
+        self, conversation_id: UUID, version: str
+    ) -> tuple[tuple[EvidenceCandidate, tuple[float, ...]], ...]:
+        with self._database.connect() as connection:
+            rows = connection.execute(
+                "SELECT c.*, d.title, d.canonical_url, e.dimension, e.vector "
+                "FROM evidence_chunk_embeddings e "
+                "JOIN evidence_chunks c USING (chunk_id) "
+                "JOIN evidence_documents d USING (document_id) "
+                "WHERE d.conversation_id = ? AND e.embedding_version = ? "
+                "ORDER BY c.chunk_id",
+                (str(conversation_id), version),
+            ).fetchall()
+            return tuple(
+                (
+                    _candidate(row),
+                    struct.unpack(f'<{row["dimension"]}f', row["vector"]),
+                )
+                for row in rows
+            )
+
 
 def _uuid_json(values: tuple[UUID, ...]) -> str:
     return json.dumps([str(value) for value in values])
+
+
+def _candidate(row) -> EvidenceCandidate:
+    return EvidenceCandidate(
+        chunk_id=row["chunk_id"],
+        document_id=row["document_id"],
+        text=row["text"],
+        title=row["title"],
+        canonical_url=row["canonical_url"],
+        heading_path=tuple(json.loads(row["heading_path"])),
+        start_offset=row["start_offset"],
+        end_offset=row["end_offset"],
+    )
 
 
 def _snapshot(row) -> EvidenceIngestionSnapshot:
