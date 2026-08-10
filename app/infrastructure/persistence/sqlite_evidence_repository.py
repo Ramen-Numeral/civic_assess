@@ -87,14 +87,14 @@ class SQLiteEvidenceRepository(EvidenceRepository):
                     connection.execute(
                         "INSERT INTO evidence_documents "
                         "(document_id, conversation_id, canonical_url, title, "
-                        "raw_content, content_hash, acquired_at) "
+                        "content, content_hash, acquired_at) "
                         "VALUES (?, ?, ?, ?, ?, ?, ?)",
                         (
                             str(actual_id),
                             conversation_id,
                             str(document.canonical_url),
                             document.title,
-                            document.raw_content,
+                            document.content,
                             document.content_hash,
                             document.acquired_at.isoformat(),
                         ),
@@ -164,25 +164,23 @@ class SQLiteEvidenceRepository(EvidenceRepository):
                 ),
             )
             queries = [
-                (batch.query_set.original_query, "original", None, None),
+                (batch.query_set.original_query, "original"),
                 *(
-                    (query, "diversified", query.facet.value, query.research_goal)
+                    (query, "diversified")
                     for query in batch.query_set.diversified_queries
                 ),
             ]
-            for position, (query, kind, facet, goal) in enumerate(queries):
+            for position, (query, kind) in enumerate(queries):
                 connection.execute(
                     "INSERT INTO evidence_queries "
-                    "(acquisition_id, query_id, position, kind, query_text, "
-                    "facet, research_goal) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    "(acquisition_id, query_id, position, kind, query_text) "
+                    "VALUES (?, ?, ?, ?, ?)",
                     (
                         str(batch.acquisition_id),
                         str(query.query_id),
                         position,
                         kind,
                         query.text,
-                        facet,
-                        goal,
                     ),
                 )
             for document in batch.documents:

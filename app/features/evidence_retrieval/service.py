@@ -53,6 +53,15 @@ class EvidenceRetrievalService:
         conversation_id: UUID,
         query_set: ResearchQuerySet,
     ) -> EvidenceRetrievalSet:
+        requirement_count = len({
+            requirement_id
+            for query in query_set.diversified_queries
+            for requirement_id in query.requirement_ids
+        })
+        if requirement_count > self._coverage_count:
+            raise ValueError(
+                "Coverage candidate count cannot represent every requirement"
+            )
         queries = (query_set.original_query, *query_set.diversified_queries)
         lexical_results, semantic_results = await asyncio.gather(
             self._lexical(conversation_id, queries),
@@ -82,6 +91,10 @@ class EvidenceRetrievalService:
                 semantic_weight=self._semantic_weight,
                 limit=self._coverage_count,
                 document_limit=self._document_limit,
+                query_requirements={
+                    query.query_id: query.requirement_ids
+                    for query in query_set.diversified_queries
+                },
             ),
         )
 
@@ -98,11 +111,13 @@ class EvidenceRetrievalService:
     async def _semantic(self, conversation_id, queries):
         if not self._semantic_weight:
             return ((),) * len(queries)
-        vectors, corpus = await asyncio.gather(
-            self._embedder.embed_queries([query.text for query in queries]),
-            self._repository.load_evidence_vectors(
-                conversation_id, self._embedder.version
-            ),
+        corpus = await self._repository.load_evidence_vectors(
+            conversation_id, self._embedder.version
+        )
+        if not corpus:
+            return ((),) * len(queries)
+        vectors = await self._embedder.embed_queries(
+            [query.text for query in queries]
         )
         return tuple(
             tuple(

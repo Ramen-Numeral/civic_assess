@@ -14,6 +14,7 @@ from app.features.evidence_ingestion.canonicalization import canonicalize_url
 from app.features.evidence_ingestion.chunker import MarkdownChunker
 from app.features.evidence_ingestion.embedder import EvidenceEmbedder
 from app.features.evidence_ingestion.errors import EvidenceIngestionError
+from app.features.evidence_ingestion.normalizer import normalize_markdown
 from app.features.evidence_ingestion.repository import EvidenceRepository
 from app.features.evidence_ingestion.schemas import (
     EvidenceIngestionBatch,
@@ -77,29 +78,49 @@ class EvidenceIngestionService:
         documents: list[EvidenceDocument] = []
         chunks = []
         for canonical_url, entries in grouped.items():
-            usable = [entry for entry in entries if entry[2].raw_content is not None]
+            usable = [
+                (entry, normalize_markdown(
+                    entry[2].raw_content,
+                    title=entry[2].title,
+                ))
+                for entry in entries
+                if entry[2].raw_content is not None
+            ]
+            usable = [item for item in usable if item[1]]
             if not usable:
+                skipped.extend(
+                    entry[2].result_id
+                    for entry in entries
+                    if entry[2].raw_content is not None
+                )
                 continue
-            winner = min(
+            winner, content = min(
                 usable,
-                key=lambda entry: (
-                    -len(entry[2].raw_content),
-                    entry[0],
-                    entry[2].rank,
+                key=lambda item: (
+                    -len(item[1]),
+                    item[0][0],
+                    item[0][2].rank,
                 ),
             )
-            content = winner[2].raw_content
             content_hash = hashlib.sha256(content.encode()).hexdigest()
             document_id = uuid5(
                 DOCUMENT_NAMESPACE,
                 f"{conversation_id}:{canonical_url}:{content_hash}",
             )
+            document_chunks = self._chunker.chunk(document_id, content)
+            if not document_chunks:
+                skipped.extend(
+                    entry[2].result_id
+                    for entry in entries
+                    if entry[2].raw_content is not None
+                )
+                continue
             document = EvidenceDocument(
                 document_id=document_id,
                 conversation_id=conversation_id,
                 canonical_url=canonical_url,
                 title=winner[2].title,
-                raw_content=content,
+                content=content,
                 content_hash=content_hash,
                 acquired_at=acquisition.acquired_at,
                 discoveries=tuple(
@@ -114,7 +135,7 @@ class EvidenceIngestionService:
                 ),
             )
             documents.append(document)
-            chunks.extend(self._chunker.chunk(document_id, content))
+            chunks.extend(document_chunks)
 
         if not documents:
             raise EvidenceIngestionError(

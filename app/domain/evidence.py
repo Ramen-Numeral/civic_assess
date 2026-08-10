@@ -29,7 +29,7 @@ class EvidenceDocument(BaseModel):
     conversation_id: UUID
     canonical_url: HttpUrl
     title: NonBlankText
-    raw_content: NonBlankText
+    content: NonBlankText
     content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     acquired_at: AwareDatetime
     discoveries: tuple[EvidenceDiscovery, ...] = Field(min_length=1)

@@ -74,6 +74,8 @@ def classify_failure(provider: ModelProvider, exc: Exception) -> LLMFailure:
             kind = FailureKind.UNAVAILABLE
         elif status in {401, 403}:
             kind = FailureKind.AUTHENTICATION
+        elif _is_tool_output_failure(provider, exc):
+            kind = FailureKind.INVALID_OUTPUT
         elif isinstance(status, int) and 400 <= status < 500:
             kind = FailureKind.INVALID_REQUEST
         else:
@@ -81,6 +83,14 @@ def classify_failure(provider: ModelProvider, exc: Exception) -> LLMFailure:
     else:
         kind = FailureKind.UNKNOWN
     return LLMFailure(kind, type(exc).__name__, status if isinstance(status, int) else None)
+
+
+def _is_tool_output_failure(provider: ModelProvider, exc: Exception) -> bool:
+    if provider is not ModelProvider.GROQ:
+        return False
+    body = getattr(exc, "body", None)
+    error = body.get("error") if isinstance(body, dict) else None
+    return isinstance(error, dict) and error.get("code") == "tool_use_failed"
 
 
 class LLMError(RuntimeError):

@@ -1,20 +1,17 @@
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
-from app.domain.research import QueryFacet
+from app.domain.research import OriginalResearchQuery, ResearchRequirement
 from app.domain.validation import NonBlankText
 from app.features.evidence_coverage.schemas import EvidenceGap
 
 
-DiversifiedQueryText = Annotated[
+PlanningText = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=300),
 ]
-ResearchGoalText = Annotated[
-    str,
-    StringConstraints(strip_whitespace=True, min_length=1, max_length=300),
-]
+GapRef = Annotated[str, StringConstraints(pattern=r"^G[1-9]\d*$")]
 
 
 class QueryDiversificationRequest(BaseModel):
@@ -26,19 +23,47 @@ class QueryDiversificationRequest(BaseModel):
 class GapDirectedQueryPlanningRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    canonical_query: NonBlankText
-    gaps: tuple[EvidenceGap, ...] = Field(min_length=1, max_length=3)
+    original_query: OriginalResearchQuery
+    requirements: tuple[ResearchRequirement, ...] = Field(min_length=1)
+    gaps: tuple[EvidenceGap, ...] = Field(min_length=1, max_length=5)
+
+    @model_validator(mode="after")
+    def require_known_gap_references(self) -> "GapDirectedQueryPlanningRequest":
+        requirements = {item.requirement_id for item in self.requirements}
+        for gap in self.gaps:
+            if gap.requirement_id not in requirements:
+                raise ValueError("Gap references an unknown requirement")
+        return self
+
+
+class ProposedEvidenceAngle(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    description: PlanningText
+    text: PlanningText
+
+
+class ProposedResearchRequirement(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    description: PlanningText
+    evidence_angles: tuple[ProposedEvidenceAngle, ...] = Field(min_length=1)
+
+
+class InitialResearchPlanProposal(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    requirements: tuple[ProposedResearchRequirement, ...] = Field(min_length=1)
 
 
 class ProposedResearchQuery(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    facet: QueryFacet
-    text: DiversifiedQueryText
-    research_goal: ResearchGoalText
+    text: PlanningText
+    gap_refs: tuple[GapRef, ...] = Field(min_length=1)
 
 
-class QueryDiversificationProposal(BaseModel):
+class GapQueryPlanningProposal(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     queries: tuple[ProposedResearchQuery, ...]

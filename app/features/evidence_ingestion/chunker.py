@@ -40,8 +40,9 @@ class MarkdownChunker:
         self._maximum = max_units
         self._overlap = overlap_units
         self._minimum = min_units
+        self._substantive_minimum = min(min_units, 8)
         self._unit_spans = unit_spans or self._whitespace_spans
-        self.version = f"markdown-v2:{unit_version}"
+        self.version = f"markdown-v3:{unit_version}"
 
     def chunk(self, document_id: UUID, content: str) -> tuple[EvidenceChunk, ...]:
         spans = self._atomic_spans(content)
@@ -76,6 +77,10 @@ class MarkdownChunker:
         ):
             groups.append(current)
         groups = self._merge_small_tail(content, groups)
+        groups = [
+            group for group in groups
+            if self._units(content, group) >= self._substantive_minimum
+        ]
         return tuple(
             self._make_chunk(document_id, content, index, group)
             for index, group in enumerate(groups)
@@ -89,6 +94,7 @@ class MarkdownChunker:
             if heading:
                 level = len(heading.group(1))
                 headings = headings[:level - 1] + [heading.group(2).strip()]
+                continue
             span = _Span(match.start(), match.end(), tuple(headings))
             spans.extend(self._split_oversized(content, span))
         return spans

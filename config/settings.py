@@ -52,6 +52,7 @@ class Settings(BaseSettings):
         default=1.0, ge=0, allow_inf_nan=False
     )
     evidence_coverage_candidate_count: int = Field(default=12, ge=1)
+    evidence_coverage_context_max: int = Field(default=16, ge=1)
     evidence_max_chunks_per_document: int = Field(default=2, ge=1)
     routes: Routes
     provider_credentials: Mapping[ModelProvider, SecretStr]
@@ -166,6 +167,9 @@ def load_application_config(
         ),
         evidence_coverage_candidate_count=values.get(
             "EVIDENCE_COVERAGE_CANDIDATE_COUNT", 12
+        ),
+        evidence_coverage_context_max=values.get(
+            "EVIDENCE_COVERAGE_CONTEXT_MAX", 16
         ),
         evidence_max_chunks_per_document=values.get(
             "EVIDENCE_MAX_CHUNKS_PER_DOCUMENT", 2

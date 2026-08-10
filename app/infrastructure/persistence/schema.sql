@@ -74,8 +74,6 @@ CREATE TABLE IF NOT EXISTS evidence_queries (
     position INTEGER NOT NULL CHECK (position >= 0),
     kind TEXT NOT NULL CHECK (kind IN ('original', 'diversified')),
     query_text TEXT NOT NULL CHECK (length(trim(query_text)) > 0),
-    facet TEXT,
-    research_goal TEXT,
     PRIMARY KEY (acquisition_id, query_id),
     UNIQUE (acquisition_id, position),
     FOREIGN KEY (acquisition_id)
@@ -87,7 +85,7 @@ CREATE TABLE IF NOT EXISTS evidence_documents (
     conversation_id TEXT NOT NULL,
     canonical_url TEXT NOT NULL,
     title TEXT NOT NULL CHECK (length(trim(title)) > 0),
-    raw_content TEXT NOT NULL CHECK (length(trim(raw_content)) > 0),
+    content TEXT NOT NULL CHECK (length(trim(content)) > 0),
     content_hash TEXT NOT NULL CHECK (length(content_hash) = 64),
     acquired_at TEXT NOT NULL,
     UNIQUE (conversation_id, canonical_url, content_hash),

@@ -1,61 +1,108 @@
 from collections.abc import Iterable
+from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, computed_field
 
+from app.domain.research import ResearchRequirement
 from app.domain.validation import NonBlankText
 from app.features.evidence_retrieval.schemas import EvidenceCandidate
+
+
+RequirementRef = Annotated[str, StringConstraints(pattern=r"^R[1-9]\d*$")]
+EvidenceRef = Annotated[str, StringConstraints(pattern=r"^E[1-9]\d*$")]
+EvidenceBasis = Literal["observed", "projected", "not_applicable"]
+SourceFitness = Literal["fit", "qualified"]
 
 
 class EvidenceCoverageRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     canonical_query: NonBlankText
-    evidence_frontier: tuple[EvidenceCandidate, ...] = ()
+    requirements: tuple[ResearchRequirement, ...] = Field(min_length=1)
+    evidence_view: tuple[EvidenceCandidate, ...] = ()
 
 
-class CoveredEvidencePoint(BaseModel):
+class RequirementFindingProposal(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    requirement_ref: RequirementRef
+    statement: NonBlankText
+    evidence_refs: tuple[EvidenceRef, ...] = Field(min_length=1)
+    evidence_basis: EvidenceBasis
+    source_fitness: SourceFitness
+    qualification: NonBlankText | None = None
+
+
+class EvidenceGapProposal(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    requirement_ref: RequirementRef
+    description: NonBlankText
+    missing_evidence: NonBlankText
+
+
+class EvidenceCoverageProposal(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    findings: tuple[RequirementFindingProposal, ...] = ()
+    gaps: tuple[EvidenceGapProposal, ...] = Field(default=(), max_length=5)
+
+
+class RequirementFinding(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    requirement_id: UUID
     statement: NonBlankText
     supporting_chunk_ids: tuple[UUID, ...] = Field(min_length=1)
+    evidence_basis: EvidenceBasis
+    source_fitness: SourceFitness
+    qualification: NonBlankText | None = None
 
-    @model_validator(mode="after")
-    def require_unique_support(self) -> "CoveredEvidencePoint":
+    def model_post_init(self, __context: object) -> None:
         if len(set(self.supporting_chunk_ids)) != len(self.supporting_chunk_ids):
-            raise ValueError("Covered point support must be unique")
-        return self
+            raise ValueError("Finding support must be unique")
+        if (
+            self.evidence_basis == "projected"
+            or self.source_fitness == "qualified"
+        ) and self.qualification is None:
+            raise ValueError("Projected or qualified findings need a qualification")
 
 
 class EvidenceGap(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    requirement_id: UUID
     description: NonBlankText
-    evidence_requirement: NonBlankText
+    missing_evidence: NonBlankText
 
 
 class EvidenceCoverageAssessment(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    sufficient: bool
-    covered_points: tuple[CoveredEvidencePoint, ...] = ()
-    gaps: tuple[EvidenceGap, ...] = Field(default=(), max_length=3)
+    findings: tuple[RequirementFinding, ...] = ()
+    gaps: tuple[EvidenceGap, ...] = Field(default=(), max_length=5)
 
-    @model_validator(mode="after")
-    def require_consistent_assessment(self) -> "EvidenceCoverageAssessment":
-        if self.sufficient and (not self.covered_points or self.gaps):
-            raise ValueError("Sufficient coverage requires grounded points and no gaps")
-        if not self.sufficient and not self.gaps:
-            raise ValueError("Insufficient coverage requires at least one gap")
-        if _duplicates(point.statement for point in self.covered_points):
-            raise ValueError("Covered points must be distinct")
-        if _duplicates(gap.description for gap in self.gaps):
-            raise ValueError("Gap descriptions must be distinct")
-        if _duplicates(gap.evidence_requirement for gap in self.gaps):
-            raise ValueError("Gap evidence requirements must be distinct")
-        return self
+    def model_post_init(self, __context: object) -> None:
+        if not self.findings and not self.gaps:
+            raise ValueError("Coverage requires a finding or gap")
+        if _duplicates(
+            (item.requirement_id, item.statement) for item in self.findings
+        ):
+            raise ValueError("Requirement findings must be distinct")
+        if _duplicates(
+            (item.requirement_id, item.description) for item in self.gaps
+        ):
+            raise ValueError("Evidence gaps must be distinct")
+
+    @computed_field
+    @property
+    def sufficient(self) -> bool:
+        return bool(self.findings) and not self.gaps
 
 
-def _duplicates(values: Iterable[str]) -> bool:
-    normalized = [" ".join(value.split()).casefold() for value in values]
+def _duplicates(values: Iterable[tuple[UUID, str]]) -> bool:
+    normalized = [
+        (owner, " ".join(value.split()).casefold()) for owner, value in values
+    ]
     return len(normalized) != len(set(normalized))

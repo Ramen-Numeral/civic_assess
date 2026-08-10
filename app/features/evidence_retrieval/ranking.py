@@ -23,6 +23,7 @@ def finalize_candidates(
     semantic_weight: float,
     limit: int,
     document_limit: int,
+    query_requirements: dict[UUID, tuple[UUID, ...]],
 ) -> tuple[RankedEvidenceCandidate, ...]:
     per_query: list[list[_Ranked]] = []
     global_items: dict[UUID, _Ranked] = {}
@@ -64,32 +65,49 @@ def finalize_candidates(
     selected: list[_Ranked] = []
     selected_ids: set[UUID] = set()
     document_counts: dict[UUID, int] = {}
-    deferred: dict[UUID, _Ranked] = {}
-    positions = [0] * len(per_query)
+    requirement_queries: dict[UUID, list[int]] = {}
+    for index, result in enumerate(results):
+        for requirement_id in query_requirements.get(result.query_id, ()):
+            requirement_queries.setdefault(requirement_id, []).append(index)
+    positions: dict[tuple[UUID, int], int] = {}
+    query_cursors = {requirement_id: 0 for requirement_id in requirement_queries}
     while len(selected) < limit:
         progressed = False
-        for index, ranking in enumerate(per_query):
-            while positions[index] < len(ranking):
-                item = ranking[positions[index]]
-                positions[index] += 1
-                chunk_id = item.evidence.chunk_id
-                if chunk_id in selected_ids:
-                    continue
-                document_id = item.evidence.document_id
-                if document_counts.get(document_id, 0) >= document_limit:
-                    deferred.setdefault(chunk_id, global_items[chunk_id])
-                    continue
-                selected.append(global_items[chunk_id])
-                selected_ids.add(chunk_id)
-                document_counts[document_id] = document_counts.get(document_id, 0) + 1
-                progressed = True
-                break
+        for requirement_id, indexes in requirement_queries.items():
+            chosen = False
+            for _ in indexes:
+                cursor = query_cursors[requirement_id]
+                index = indexes[cursor % len(indexes)]
+                query_cursors[requirement_id] = cursor + 1
+                ranking = per_query[index]
+                key = (requirement_id, index)
+                position = positions.get(key, 0)
+                while position < len(ranking):
+                    item = ranking[position]
+                    position += 1
+                    chunk_id = item.evidence.chunk_id
+                    if chunk_id in selected_ids:
+                        continue
+                    document_id = item.evidence.document_id
+                    if document_counts.get(document_id, 0) >= document_limit:
+                        continue
+                    selected.append(global_items[chunk_id])
+                    selected_ids.add(chunk_id)
+                    document_counts[document_id] = (
+                        document_counts.get(document_id, 0) + 1
+                    )
+                    progressed = True
+                    chosen = True
+                    break
+                positions[key] = position
+                if chosen:
+                    break
             if len(selected) == limit:
                 break
         if not progressed:
             break
 
-    for item in sorted(deferred.values(), key=_global_key):
+    for item in sorted(global_items.values(), key=_query_key):
         if len(selected) == limit:
             break
         if item.evidence.chunk_id not in selected_ids:
@@ -113,7 +131,3 @@ def _query_key(item: _Ranked) -> tuple[float, float, int, str]:
         item.best_rank,
         str(item.evidence.chunk_id),
     )
-
-
-def _global_key(item: _Ranked) -> tuple[float, float, int, str]:
-    return _query_key(item)
