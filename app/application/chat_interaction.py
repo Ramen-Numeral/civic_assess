@@ -6,6 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
+from app.application.workflow_response import workflow_response
 from app.domain.conversation import Conversation, StoredConversationTurn
 from app.features.conversation_context import ConversationContextService
 from app.features.conversation_context.errors import ContextCatchUpRequiredError
@@ -13,7 +14,7 @@ from app.features.conversation_memory import ConversationService
 from app.features.conversation_state import ConversationStateCoordinator
 from app.features.input_validation.schemas import InputValidationRequest
 from app.orchestration.orchestrator import ChatOrchestrator
-from app.orchestration.state import ChatState
+from app.orchestration.state import ChatRoute, ChatState
 
 
 class ChatInteractionRequest(BaseModel):
@@ -30,6 +31,7 @@ class ChatInteractionResult:
 
     user_turn: StoredConversationTurn
     assistant_turn: StoredConversationTurn | None
+    response_text: str | None
     workflow_state: ChatState
 
 
@@ -110,18 +112,28 @@ class ChatInteractionService:
                 InputValidationRequest(query=user_turn.content),
                 conversation_context=context,
             )
-            answer = state.get("answer_result")
+            response = workflow_response(state)
+            ephemeral = (
+                response is not None
+                and "answer_result" not in state
+                and state.get("chat_route") is not ChatRoute.AWAIT_CLARIFICATION
+            )
+            if ephemeral and not await self._conversations.discard_latest_user_turn(
+                request.conversation_id, user_turn.turn_id,
+            ):
+                raise RuntimeError("Provisional user turn could not be discarded")
             assistant_turn = (
                 await self._conversations.append_assistant_turn(
                     conversation_id=request.conversation_id,
-                    content=answer.text,
+                    content=response,
                 )
-                if answer is not None
+                if response is not None and not ephemeral
                 else None
             )
             return ChatInteractionResult(
                 user_turn=user_turn,
                 assistant_turn=assistant_turn,
+                response_text=response,
                 workflow_state=state,
             )
 

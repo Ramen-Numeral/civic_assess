@@ -86,6 +86,14 @@ class ConversationService:
         await self._require_active(conversation_id)
         return await self._repository.list_turns(conversation_id)
 
+    async def discard_latest_user_turn(
+        self, conversation_id: UUID, turn_id: UUID,
+    ) -> bool:
+        await self._require_active(conversation_id)
+        return await self._repository.discard_latest_user_turn(
+            conversation_id, turn_id,
+        )
+
     async def end_conversation(self, conversation_id: UUID) -> None:
         if not await self._repository.delete_conversation(conversation_id):
             raise UnknownConversationError()

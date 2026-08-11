@@ -110,6 +110,13 @@ class SQLiteConversationRepository(ConversationRepository):
     async def delete_conversation(self, conversation_id: UUID) -> bool:
         return await asyncio.to_thread(self._delete_conversation, conversation_id)
 
+    async def discard_latest_user_turn(
+        self, conversation_id: UUID, turn_id: UUID,
+    ) -> bool:
+        return await asyncio.to_thread(
+            self._discard_latest_user_turn, conversation_id, turn_id,
+        )
+
     def _create_conversation(self, conversation: Conversation) -> None:
         with self._database.connect() as connection:
             connection.execute(
@@ -372,6 +379,18 @@ class SQLiteConversationRepository(ConversationRepository):
                 (str(conversation_id),),
             )
             return cursor.rowcount > 0
+
+    def _discard_latest_user_turn(
+        self, conversation_id: UUID, turn_id: UUID,
+    ) -> bool:
+        with self._database.connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM turns WHERE conversation_id = ? AND turn_id = ? "
+                "AND role = 'user' AND sequence_number = (SELECT MAX(sequence_number) "
+                "FROM turns WHERE conversation_id = ?)",
+                (str(conversation_id), str(turn_id), str(conversation_id)),
+            )
+            return cursor.rowcount == 1
 
 
 def _allocate_sequence(
