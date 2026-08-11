@@ -46,9 +46,7 @@ class AnswerCoordinator:
             revision_ms = _elapsed(revision_started)
         degraded = bool(final and final.unsupported_paragraph_ids)
         revision_failed = bool(revision_attempted and final and final.verdict == "revise")
-        note = ("The available evidence could not support a reliable answer."
-                if degraded else final.evidence_note if final else
-                "The answer could not receive a final evidence audit.")
+        note = _evidence_note(request, draft, final, degraded)
         return GroundedAnswerResult(
             initial_draft=initial, draft=draft, initial_audit=first, final_audit=final,
             revision_attempted=revision_attempted, revision_failed=revision_failed,
@@ -69,6 +67,43 @@ class AnswerCoordinator:
             return await self._synthesis.audit(request, draft)
         except (AnswerSynthesisError, InvalidAnswerProposalError):
             return None
+
+
+def _evidence_note(
+    request: GroundedAnswerRequest,
+    draft: NaturalAnswerDraft,
+    audit: AnswerAudit | None,
+    degraded: bool,
+) -> str:
+    if degraded or not draft.paragraphs:
+        return "The available evidence could not support a reliable answer."
+    if audit is None:
+        return "The answer could not receive a final evidence audit."
+    findings = [
+        request.findings[index]
+        for index in {index for item in draft.paragraphs for index in item.finding_indexes}
+    ]
+    cited = {chunk for item in draft.paragraphs for chunk in item.supporting_chunk_ids}
+    sources = {
+        str(item.canonical_url) for item in request.evidence if item.chunk_id in cited
+    }
+    if min(audit.paragraph_support.values()) <= 3:
+        strength = "The cited sources only partially establish this answer"
+    elif any(item.evidence_basis == "projected" for item in findings):
+        strength = (
+            "The cited sources support this answer, except where it describes "
+            "projections rather than measured outcomes"
+        )
+    elif any(item.source_fitness == "qualified" for item in findings):
+        strength = "The cited sources support this answer within the limitations noted"
+    else:
+        strength = "The cited sources directly document this answer"
+    plural = "" if len(sources) == 1 else "s"
+    parts = [f"{strength}, drawn from {len(sources)} source{plural}.", audit.evidence_note]
+    if request.unresolved:
+        gaps = "; ".join(item.rstrip(".") for item in request.unresolved)
+        parts.append(f"The available evidence did not establish: {gaps}.")
+    return " ".join(parts)
 
 
 def _elapsed(started: float) -> float:

@@ -2,7 +2,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
-from app.domain.research import OriginalResearchQuery, ResearchRequirement
+from app.domain.research import OriginalResearchQuery, ResearchRequirement, TemporalScope
 from app.domain.validation import NonBlankText
 from app.features.evidence_coverage.schemas import EvidenceGap
 
@@ -23,6 +23,7 @@ class GapDirectedQueryPlanningRequest(BaseModel):
     original_query: OriginalResearchQuery
     requirements: tuple[ResearchRequirement, ...] = Field(min_length=1)
     gaps: tuple[EvidenceGap, ...] = Field(min_length=1, max_length=5)
+    temporal_scope: TemporalScope = Field(default_factory=TemporalScope)
 
     @model_validator(mode="after")
     def require_known_gap_references(self) -> "GapDirectedQueryPlanningRequest":
@@ -51,6 +52,7 @@ class ProposedResearchRequirement(BaseModel):
 class InitialResearchPlanProposal(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    temporal_scope: TemporalScope
     requirements: tuple[ProposedResearchRequirement, ...] = Field(min_length=1)
 
 

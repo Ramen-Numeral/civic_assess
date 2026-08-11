@@ -4,6 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from app.domain.validation import NonBlankText
+from app.domain.research import TemporalScope
 from app.features.evidence_coverage.schemas import EvidenceBasis, SourceFitness
 from app.features.evidence_retrieval.schemas import EvidenceCandidate
 
@@ -26,8 +27,10 @@ class GroundedAnswerRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     canonical_query: NonBlankText
+    temporal_scope: TemporalScope = Field(default_factory=TemporalScope)
     findings: tuple[AnswerFinding, ...]
     evidence: tuple[EvidenceCandidate, ...]
+    unresolved: tuple[NonBlankText, ...] = ()
 
     @model_validator(mode="after")
     def require_consistent_grounding(self) -> "GroundedAnswerRequest":

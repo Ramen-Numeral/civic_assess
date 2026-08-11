@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, computed_field
 
-from app.domain.research import ResearchRequirement
+from app.domain.research import ResearchRequirement, TemporalScope
 from app.domain.validation import NonBlankText
 from app.features.evidence_retrieval.schemas import EvidenceCandidate
 
@@ -19,6 +19,7 @@ class EvidenceCoverageRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     canonical_query: NonBlankText
+    temporal_scope: TemporalScope = Field(default_factory=TemporalScope)
     requirements: tuple[ResearchRequirement, ...] = Field(min_length=1)
     evidence_view: tuple[EvidenceCandidate, ...] = ()
 

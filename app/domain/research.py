@@ -53,11 +53,18 @@ class ResearchRequirement(BaseModel):
         return self
 
 
+class TemporalScope(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    spans: tuple[NonBlankText, ...] = ()
+
+
 class ResearchPlan(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     requirements: tuple[ResearchRequirement, ...] = Field(min_length=1)
     query_set: ResearchQuerySet
+    temporal_scope: TemporalScope = Field(default_factory=TemporalScope)
 
     @model_validator(mode="after")
     def require_complete_angle_queries(self) -> "ResearchPlan":

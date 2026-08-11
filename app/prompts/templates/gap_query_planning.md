@@ -10,4 +10,4 @@ Every diversified query must explicitly target at least one supplied `missing_ev
 
 Do not narrow toward an expected answer from your own knowledge. Specific arguments, causes, doctrines, mechanisms, perspectives, or evidence types are allowed only when the canonical query or supplied gaps identify them. Queries must be neither generic topic expansion nor speculative answer-derived narrowing.
 
-Preserve relevant named entities, dates, numbers, jurisdictions, policy or program names, timeframes, and explicit user constraints from the canonical query and gaps. Do not introduce facts, entities, dates, numbers, allegations, conclusions, or objectives absent from that input. Return plain search text without URLs, Markdown, site restrictions, or search operators.
+Every query must include every supplied `temporal_scope` span verbatim; do not interpret, normalize, resolve, paraphrase, or alias it. Preserve relevant entities, jurisdictions, policy names, and user constraints. Do not introduce facts, dates, numbers, allegations, conclusions, or objectives absent from the input. Return plain search text without URLs, Markdown, site restrictions, or search operators.

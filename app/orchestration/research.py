@@ -23,6 +23,9 @@ from app.features.query_diversification.schemas import (
     GapDirectedQueryPlanningRequest,
     QueryDiversificationRequest,
 )
+from app.features.query_diversification.errors import (
+    InvalidQueryDiversificationError, QueryDiversificationError,
+)
 from app.features.query_diversification.service import QueryDiversificationService
 from app.features.research_acquisition.service import ResearchAcquisitionService
 
@@ -131,13 +134,18 @@ class ResearchCoordinator:
             if round_number == 1:
                 query_set = _planned_gap_queries(plan, cumulative.gaps)
             else:
-                query_set = await self._planner.plan_for_gaps(
-                    GapDirectedQueryPlanningRequest(
-                        original_query=plan.query_set.original_query,
-                        requirements=plan.requirements,
-                        gaps=cumulative.gaps,
+                try:
+                    query_set = await self._planner.plan_for_gaps(
+                        GapDirectedQueryPlanningRequest(
+                            original_query=plan.query_set.original_query,
+                            requirements=plan.requirements, gaps=cumulative.gaps,
+                            temporal_scope=plan.temporal_scope,
+                        )
                     )
-                )
+                except (InvalidQueryDiversificationError, QueryDiversificationError):
+                    LOGGER.warning("Gap planning failed; finalizing cumulative research",
+                                   extra={"event": "research.gap_plan.degraded"})
+                    return _result(plan, rounds, cumulative)
             acquisition = await acquisition_service.acquire(query_set)
             failures = tuple(
                 outcome
@@ -200,6 +208,7 @@ class ResearchCoordinator:
         )
         request = EvidenceCoverageRequest(
             canonical_query=plan.query_set.original_query.text,
+            temporal_scope=plan.temporal_scope,
             requirements=tuple(
                 requirement for requirement in plan.requirements
                 if gaps is None or any(

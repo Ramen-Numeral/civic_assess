@@ -131,6 +131,7 @@ def build_answer_node(coordinator: AnswerCoordinator) -> AgentNode[ChatState]:
         research = state["research_result"]
         result = await coordinator.answer(GroundedAnswerRequest(
             canonical_query=state["gate_result"].normalized_query,
+            temporal_scope=research.plan.temporal_scope,
             findings=tuple(AnswerFinding(
                 statement=item.statement,
                 supporting_chunk_ids=item.supporting_chunk_ids,
@@ -139,6 +140,10 @@ def build_answer_node(coordinator: AnswerCoordinator) -> AgentNode[ChatState]:
                 qualification=item.qualification,
             ) for item in research.cumulative_coverage.findings),
             evidence=research.cumulative_evidence,
+            unresolved=tuple(dict.fromkeys(
+                item.missing_evidence
+                for item in research.cumulative_coverage.gaps
+            )),
         ))
         return {"answer_result": result}
 

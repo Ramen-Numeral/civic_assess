@@ -16,7 +16,17 @@ from app.prompts.base import Prompt
 
 
 LOGGER = logging.getLogger(__name__)
-INTERNAL_FINDING_REF = re.compile(r"\s*[\(\[]F[1-9]\d*[\)\]]")
+INTERNAL_FINDING_REF = re.compile(
+    r"\s*(?:\((?:[FEP][1-9]\d*(?:\s*[/,]\s*)?)+\)|"
+    r"(?<!\[)\[(?:[FEP][1-9]\d*(?:\s*[/,]\s*)?)+\](?!\]))"
+)
+INLINE_EVIDENCE_REF = re.compile(r"\[\[E([1-9]\d*)\]\]")
+INLINE_FINDING_REF = re.compile(r"\[\[F([1-9]\d*)\]\]")
+BRACKETED_REF_RUN = re.compile(
+    r"\[+\s*[FEP][1-9]\d*(?:\s*[\],/]+\s*\[*\s*[FEP][1-9]\d*)*\s*\]+"
+)
+REF_TOKEN = re.compile(r"[FEP][1-9]\d*")
+NON_EVIDENCE_MARKER = re.compile(r"\s*\[\[[FP][1-9]\d*\]\]")
 
 
 class AnswerSynthesisService:
@@ -42,6 +52,9 @@ class AnswerSynthesisService:
         self, request: GroundedAnswerRequest, draft: NaturalAnswerDraft,
     ) -> AnswerAudit:
         payload, _, evidence_refs = _answer_view(request)
+        payload["temporal_scope"] = list(request.temporal_scope.spans)
+        for finding in payload["findings"]:
+            finding.pop("source_fitness")
         paragraphs = {f"P{i}": item for i, item in enumerate(draft.paragraphs, 1)}
         payload["proposed_answer"] = [{
             "ref": ref, "text": item.text,
@@ -63,7 +76,7 @@ class AnswerSynthesisService:
                 },
                 answer_quality=proposal.answer_quality,
                 revision_instructions=proposal.revision_instructions,
-                evidence_note=INTERNAL_FINDING_REF.sub("", proposal.evidence_note).strip(),
+                evidence_note=_strip_refs(proposal.evidence_note),
             )
         except LLMError as exc:
             self._raise_model_error(exc, "Answer auditor")
@@ -74,7 +87,7 @@ class AnswerSynthesisService:
         self, request: GroundedAnswerRequest, draft: NaturalAnswerDraft | None = None,
         instructions: tuple[str, ...] = (),
     ) -> NaturalAnswerDraft:
-        payload, findings, _ = _answer_view(request)
+        payload, findings, evidence_refs = _answer_view(request)
         if draft is not None:
             payload["proposed_answer"] = [{
                 "ref": f"P{i}", "text": item.text,
@@ -90,10 +103,35 @@ class AnswerSynthesisService:
                 proposal = await self._llm.invoke_structured(
                     messages, GroundedAnswerProposal,
                 )
+                texts = []
+                for item in proposal.paragraphs:
+                    normalized = BRACKETED_REF_RUN.sub(_canonical_refs, item.text)
+                    if normalized != item.text:
+                        LOGGER.warning(
+                            "Answer writer emitted malformed citation syntax",
+                            extra={"event": "answer.writer.marker_normalized"},
+                        )
+                    cited_findings = {f"F{x}" for x in INLINE_FINDING_REF.findall(normalized)}
+                    if not cited_findings <= set(item.finding_refs):
+                        raise ValueError("Paragraph cited an undeclared finding")
+                    text = INLINE_FINDING_REF.sub(lambda match: " ".join(
+                        f"[[{evidence_refs[chunk]}]]" for chunk in request.findings[
+                            findings[f"F{match.group(1)}"]
+                        ].supporting_chunk_ids
+                    ), normalized)
+                    allowed = {
+                        evidence_refs[chunk] for ref in item.finding_refs
+                        for chunk in request.findings[findings[ref]].supporting_chunk_ids
+                    }
+                    if not {f"E{x}" for x in INLINE_EVIDENCE_REF.findall(text)} <= allowed:
+                        raise ValueError("Paragraph used evidence outside its findings")
+                    texts.append(text)
                 return NaturalAnswerDraft(paragraphs=tuple(
                     AnswerParagraph(
                         paragraph_id=uuid4(),
-                        text=INTERNAL_FINDING_REF.sub("", item.text).strip(),
+                        text=NON_EVIDENCE_MARKER.sub(
+                            "", INTERNAL_FINDING_REF.sub("", text),
+                        ).strip(),
                         finding_indexes=tuple(findings[ref] for ref in item.finding_refs),
                         supporting_chunk_ids=tuple(dict.fromkeys(
                             chunk for ref in item.finding_refs
@@ -101,7 +139,7 @@ class AnswerSynthesisService:
                                 findings[ref]
                             ].supporting_chunk_ids
                         )),
-                    ) for item in proposal.paragraphs
+                    ) for item, text in zip(proposal.paragraphs, texts, strict=True)
                 ))
             except LLMError as exc:
                 if not exc.failures or any(
@@ -140,6 +178,16 @@ class AnswerSynthesisService:
             "answer_writer_unavailable", "I couldn't prepare a grounded answer right now.",
             retryable=True,
         ) from exc
+
+
+def _canonical_refs(match: re.Match[str]) -> str:
+    return " ".join(f"[[{item}]]" for item in REF_TOKEN.findall(match.group()))
+
+
+def _strip_refs(value: str) -> str:
+    return " ".join(
+        INTERNAL_FINDING_REF.sub("", BRACKETED_REF_RUN.sub("", value)).split()
+    )
 
 
 def _answer_view(request: GroundedAnswerRequest):

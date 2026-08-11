@@ -11,6 +11,7 @@ from app.domain.research import (
     ResearchPlan,
     ResearchRequirement,
     ResearchQuerySet,
+    TemporalScope,
 )
 from app.features.query_diversification.errors import (
     InvalidQueryDiversificationError,
@@ -65,18 +66,22 @@ class QueryDiversificationService:
                 )
             ),
         ]
+        scope = TemporalScope()
         for attempt in range(2):
             try:
                 proposal = await self._propose(messages, InitialResearchPlanProposal)
+                scope = self._verbatim_scope(proposal, request.validated_query)
                 self._validate_plan(proposal, request.validated_query)
+                if not attempt:
+                    self._require_decomposition(proposal, request.validated_query)
                 break
-            except InvalidQueryDiversificationError as exc:
+            except (InvalidQueryDiversificationError, QueryDiversificationError) as exc:
                 if attempt:
                     LOGGER.warning(
                         "Initial research plan degraded to direct evidence",
                         extra={"event": "research.plan.direct_fallback"},
                     )
-                    return self._direct_evidence_plan(request.validated_query)
+                    return self._direct_evidence_plan(request.validated_query, scope)
                 LOGGER.warning(
                     "Initial research plan failed validation; retrying",
                     extra={"event": "research.plan.contract_repair"},
@@ -104,10 +109,21 @@ class QueryDiversificationService:
                         break
             if len(selected) == before:
                 break
+        selected = [
+            (index, angle.model_copy(
+                update={"text": _with_spans(angle.text, scope.spans)},
+            ))
+            for index, angle in selected
+        ]
         queries = tuple(angle for _, angle in selected)
-        self._validate_queries(
-            request.validated_query, queries, request.validated_query, minimum=1,
-        )
+        try:
+            self._validate_queries(
+                request.validated_query, queries, request.validated_query, minimum=1,
+            )
+        except InvalidQueryDiversificationError:
+            LOGGER.warning("Initial query plan degraded to direct evidence",
+                           extra={"event": "research.plan.direct_fallback"})
+            return self._direct_evidence_plan(request.validated_query, scope)
         requirement_ids = tuple(uuid4() for _ in proposal.requirements)
         retained = [[] for _ in proposal.requirements]
         for index, angle in selected:
@@ -134,6 +150,7 @@ class QueryDiversificationService:
         )
         return ResearchPlan(
             requirements=requirements,
+            temporal_scope=scope,
             query_set=ResearchQuerySet(
                 original_query=original_query,
                 diversified_queries=diversified,
@@ -141,21 +158,21 @@ class QueryDiversificationService:
         )
 
     @staticmethod
-    def _direct_evidence_plan(query: str) -> ResearchPlan:
+    def _direct_evidence_plan(
+        query: str, temporal_scope: TemporalScope | None = None,
+    ) -> ResearchPlan:
         requirement_id = uuid4()
         return ResearchPlan(
             requirements=(ResearchRequirement(
                 requirement_id=requirement_id, description=query,
                 evidence_expectation="Evidence directly addressing the query.",
-                evidence_angles=("Direct evidence",),
+                evidence_angles=(),
             ),),
             query_set=ResearchQuerySet(
                 original_query=OriginalResearchQuery(query_id=uuid4(), text=query),
-                diversified_queries=(DiversifiedResearchQuery(
-                    query_id=uuid4(), requirement_ids=(requirement_id,),
-                    evidence_angle="Direct evidence", text=f"{query} direct evidence",
-                ),),
+                diversified_queries=(),
             ),
+            temporal_scope=temporal_scope or TemporalScope(),
         )
 
     async def plan_for_gaps(
@@ -176,6 +193,7 @@ class QueryDiversificationService:
             )),
             HumanMessage(content=json.dumps({
                 "canonical_query": request.original_query.text,
+                "temporal_scope": list(request.temporal_scope.spans),
                 "gaps": [{
                     "ref": ref,
                     "requirement": requirements[gap.requirement_id].description,
@@ -210,6 +228,7 @@ class QueryDiversificationService:
         ])
         queries = self._usable_gap_queries(
             proposal.queries, gaps, request.original_query.text, allowed_text,
+            request.temporal_scope,
         )
         if not queries:
             retry = [*messages, HumanMessage(content=json.dumps({
@@ -221,6 +240,7 @@ class QueryDiversificationService:
             proposal = await self._propose(retry, GapQueryPlanningProposal)
             queries = self._usable_gap_queries(
                 proposal.queries, gaps, request.original_query.text, allowed_text,
+                request.temporal_scope,
             )
         diversified = []
         for text, refs in queries:
@@ -239,16 +259,19 @@ class QueryDiversificationService:
 
     def _usable_gap_queries(
         self, queries, gaps, original_query: str, allowed_text: str,
+        temporal_scope: TemporalScope,
     ) -> tuple[tuple[str, tuple[str, ...]], ...]:
         original = _normalize(original_query)
         allowed_numbers = _numbers(allowed_text)
+        required_time = tuple(_normalize(span) for span in temporal_scope.spans)
         deduped: dict[str, tuple[str, tuple[str, ...]]] = {}
         for query in queries:
             key = _normalize(query.text)
             refs = tuple(dict.fromkeys(ref for ref in query.gap_refs if ref in gaps))
             if (not key or not refs or key == original
                     or URL_OR_MARKDOWN_LINK.search(query.text)
-                    or not _numbers(query.text) <= allowed_numbers):
+                    or not _numbers(query.text) <= allowed_numbers
+                    or not all(span in key for span in required_time)):
                 continue
             if key in deduped:
                 text, prior = deduped[key]
@@ -307,6 +330,31 @@ class QueryDiversificationService:
             raise InvalidQueryDiversificationError(
                 f"Diversifier output violated query invariants: {exc}"
             ) from exc
+
+    @staticmethod
+    def _verbatim_scope(proposal, allowed_text: str) -> TemporalScope:
+        allowed = _normalize(allowed_text)
+        spans = tuple(_normalize(span) for span in proposal.temporal_scope.spans)
+        if len(spans) != len(set(spans)) or not all(
+            span in allowed for span in spans
+        ):
+            raise InvalidQueryDiversificationError(
+                "Temporal scope must be copied verbatim from the validated query"
+            )
+        return proposal.temporal_scope
+
+    @staticmethod
+    def _require_decomposition(proposal, validated_query: str) -> None:
+        if len(proposal.requirements) > 1:
+            return
+        description = _normalize(proposal.requirements[0].description)
+        query = _normalize(validated_query)
+        if description == query or description in query or query in description:
+            raise InvalidQueryDiversificationError(
+                "A requirement must state what to establish rather than restate "
+                "the query; decompose distinct questions and materially distinct "
+                "documented positions into separate requirements"
+            )
 
     @staticmethod
     def _validate_plan(proposal, allowed_text: str) -> None:
@@ -371,6 +419,15 @@ class QueryDiversificationService:
 
 def _normalize(value: str) -> str:
     return " ".join(value.split()).casefold()
+
+
+def _with_spans(text: str, spans: tuple[str, ...]) -> str:
+    normalized = _normalize(text)
+    missing = [
+        span for span in spans
+        if _normalize(span) and _normalize(span) not in normalized
+    ]
+    return " ".join([text.strip(), *missing]) if missing else text
 
 
 def _numbers(value: str) -> set[str]:

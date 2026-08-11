@@ -52,6 +52,7 @@ class EvidenceCoverageService:
                 SystemMessage(content=self._prompt.build()),
                 HumanMessage(content=json.dumps({
                     "canonical_query": request.canonical_query,
+                    "temporal_scope": list(request.temporal_scope.spans),
                     "requirements": [{
                         "ref": ref,
                         "description": requirement.description,
