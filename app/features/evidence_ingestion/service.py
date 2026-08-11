@@ -14,7 +14,7 @@ from app.features.evidence_ingestion.canonicalization import canonicalize_url
 from app.features.evidence_ingestion.chunker import MarkdownChunker
 from app.features.evidence_ingestion.embedder import EvidenceEmbedder
 from app.features.evidence_ingestion.errors import EvidenceIngestionError
-from app.features.evidence_ingestion.normalizer import normalize_markdown
+from app.features.evidence_ingestion.normalizer import has_substance, normalize_markdown
 from app.features.evidence_ingestion.repository import EvidenceRepository
 from app.features.evidence_ingestion.schemas import (
     EvidenceIngestionBatch,
@@ -86,7 +86,7 @@ class EvidenceIngestionService:
                 for entry in entries
                 if entry[2].raw_content is not None
             ]
-            usable = [item for item in usable if item[1]]
+            usable = [item for item in usable if has_substance(item[1])]
             if not usable:
                 skipped.extend(
                     entry[2].result_id

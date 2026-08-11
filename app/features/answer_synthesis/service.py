@@ -16,17 +16,15 @@ from app.prompts.base import Prompt
 
 
 LOGGER = logging.getLogger(__name__)
-INTERNAL_FINDING_REF = re.compile(
-    r"\s*(?:\((?:[FEP][1-9]\d*(?:\s*[/,]\s*)?)+\)|"
-    r"(?<!\[)\[(?:[FEP][1-9]\d*(?:\s*[/,]\s*)?)+\](?!\]))"
-)
-INLINE_EVIDENCE_REF = re.compile(r"\[\[E([1-9]\d*)\]\]")
-INLINE_FINDING_REF = re.compile(r"\[\[F([1-9]\d*)\]\]")
+REF_TOKEN = re.compile(r"[FEP][1-9]\d*")
 BRACKETED_REF_RUN = re.compile(
     r"\[+\s*[FEP][1-9]\d*(?:\s*[\],/]+\s*\[*\s*[FEP][1-9]\d*)*\s*\]+"
 )
-REF_TOKEN = re.compile(r"[FEP][1-9]\d*")
-NON_EVIDENCE_MARKER = re.compile(r"\s*\[\[[FP][1-9]\d*\]\]")
+PARENTHETICAL_REF = re.compile(r"\s*\((?:[FEP][1-9]\d*(?:\s*[/,]\s*)?)+\)")
+INLINE_EVIDENCE_REF = re.compile(r"\[\[E([1-9]\d*)\]\]")
+INLINE_FINDING_REF = re.compile(r"\[\[F([1-9]\d*)\]\]")
+UNRESOLVED_MARKER = re.compile(r"\s*\[\[[FP][1-9]\d*\]\]")
+WHITESPACE = re.compile(r"\s+")
 
 
 class AnswerSynthesisService:
@@ -66,13 +64,20 @@ class AnswerSynthesisService:
                 SystemMessage(content=self._audit_prompt.build()),
                 HumanMessage(content=json.dumps(payload, ensure_ascii=False)),
             ], AnswerAuditProposal)
-            ratings = {item.paragraph_ref: item.rating for item in proposal.paragraph_support}
-            if tuple(ratings) != tuple(paragraphs):
+            rated = {item.paragraph_ref: item for item in proposal.paragraph_support}
+            if tuple(rated) != tuple(paragraphs):
                 raise ValueError("Audit must rate every paragraph exactly once and in order")
+            evidence = {evidence_refs[item.chunk_id]: item for item in request.evidence}
             return AnswerAudit(
                 paragraph_support={
-                    paragraphs[ref].paragraph_id: rating
-                    for ref, rating in ratings.items()
+                    paragraphs[ref].paragraph_id: min(item.support, item.scope)
+                    for ref, item in rated.items()
+                },
+                paragraph_quotes={
+                    paragraphs[ref].paragraph_id: self._verified_quotes(
+                        item, paragraphs[ref], evidence,
+                    )
+                    for ref, item in rated.items()
                 },
                 answer_quality=proposal.answer_quality,
                 revision_instructions=proposal.revision_instructions,
@@ -129,8 +134,8 @@ class AnswerSynthesisService:
                 return NaturalAnswerDraft(paragraphs=tuple(
                     AnswerParagraph(
                         paragraph_id=uuid4(),
-                        text=NON_EVIDENCE_MARKER.sub(
-                            "", INTERNAL_FINDING_REF.sub("", text),
+                        text=UNRESOLVED_MARKER.sub(
+                            "", PARENTHETICAL_REF.sub("", text),
                         ).strip(),
                         finding_indexes=tuple(findings[ref] for ref in item.finding_refs),
                         supporting_chunk_ids=tuple(dict.fromkeys(
@@ -171,6 +176,27 @@ class AnswerSynthesisService:
         raise AssertionError("unreachable")
 
     @staticmethod
+    def _verified_quotes(proposal, paragraph, evidence) -> dict:
+        verified: dict = {}
+        for quote in proposal.quotes:
+            candidate = evidence.get(quote.evidence_ref)
+            passage = WHITESPACE.sub(" ", candidate.text) if candidate else ""
+            span = WHITESPACE.sub(" ", quote.text).strip()
+            if (
+                candidate is None
+                or candidate.chunk_id not in paragraph.supporting_chunk_ids
+                or candidate.chunk_id in verified
+                or span not in passage
+            ):
+                LOGGER.warning(
+                    "Answer auditor returned an unverifiable quotation",
+                    extra={"event": "answer.audit.quote_rejected"},
+                )
+                continue
+            verified[candidate.chunk_id] = span
+        return verified
+
+    @staticmethod
     def _raise_model_error(exc: LLMError, stage: str) -> None:
         if exc.failures and all(f.kind is FailureKind.INVALID_OUTPUT for f in exc.failures):
             raise InvalidAnswerProposalError(f"{stage} returned invalid structured output") from exc
@@ -186,7 +212,7 @@ def _canonical_refs(match: re.Match[str]) -> str:
 
 def _strip_refs(value: str) -> str:
     return " ".join(
-        INTERNAL_FINDING_REF.sub("", BRACKETED_REF_RUN.sub("", value)).split()
+        PARENTHETICAL_REF.sub("", BRACKETED_REF_RUN.sub("", value)).split()
     )
 
 

@@ -31,6 +31,16 @@ NUMBERED_CITATION = re.compile(r"^(?:\[\d+\]|\d{1,3}[.)]?)\s+")
 NUMBERED_CITATIONS = re.compile(r"(?:^|\s)(?:\[\d+\]|\d{1,3}[.)]?)(?=\s+)")
 YEAR = re.compile(r"\b(?:19|20)\d{2}\b")
 STRUCTURAL = re.compile(r"^(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|>|```|\|)")
+BULLET_ROW = re.compile(r"^\s*\|.*(?:•[^•]*){2,}")
+SENTENCE_END = re.compile(r"[.!?][\"'’)\]]?(?:\s|$)")
+PROSE_SENTENCE = re.compile(r"[^.!?\n]*[.!?][\"'’)\]]?(?=\s|$)")
+FIGURE = re.compile(
+    r"\$\s*\d|\d\s*(?:%|percent|million|billion|trillion)|\d+\.\d"
+    r"|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d"
+    r"|\d{1,2}/\d{1,2}/\d",
+    re.I,
+)
+MINIMUM_PROSE_WORDS = 80
 DEFINITION_LABELS = {"audiences", "categories", "download", "program", "written by"}
 TRAILING_SECTIONS = {
     "author",
@@ -168,7 +178,44 @@ def normalize_markdown(content: str, *, title: str | None = None) -> str:
             continue
         lines.append(line)
         previous = semantic
-    return _clean_blocks(lines)
+    return _clean_blocks(_strip_navigation(lines))
+
+
+def has_substance(content: str) -> bool:
+    return sum(
+        len(WORD.findall(match.group()))
+        for match in PROSE_SENTENCE.finditer(content)
+    ) >= MINIMUM_PROSE_WORDS
+
+
+def _strip_navigation(lines: list[str]) -> list[str]:
+    kept: list[str] = []
+    block: list[str] = []
+    for line in (*lines, ""):
+        if line:
+            block.append(line)
+            continue
+        if block:
+            retained = [
+                item for item in block if item.startswith("#")
+            ] if _navigation(block) else block
+            kept.extend(retained)
+            if retained:
+                kept.append("")
+        block = []
+    return kept
+
+
+def _navigation(block: list[str]) -> bool:
+    body = [item for item in block if not item.startswith("#")]
+    if any(BULLET_ROW.match(item) for item in body):
+        return True
+    return (
+        len(body) >= 3
+        and not any(SENTENCE_END.search(item) for item in body)
+        and not any(FIGURE.search(item) for item in body)
+        and sum(len(WORD.findall(item)) for item in body) / len(body) <= 8
+    )
 
 
 def _clean_blocks(lines: list[str]) -> str:

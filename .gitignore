@@ -28,4 +28,4 @@ data/*.sqlite-shm
 data/*.sqlite-wal
 data/*.sqlite3-shm
 data/*.sqlite3-wal
-evals/reports/*.json
+evals/reports/

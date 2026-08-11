@@ -14,6 +14,8 @@ Distinguish observed outcomes from modeled projections, hypothetical extensions,
 
 For each finding, return `evidence_basis` as `observed`, `projected`, or `not_applicable`, and `source_fitness` as `fit` or `qualified`. `observed` means documented outcomes within the requested entity, timeframe, jurisdiction, and phase; later or broader evidence is not `fit`. `projected` includes modeled, hypothetical, future, or materially different designs. Use `not_applicable` for enacted text, reasoning, or positions. `qualified` evidence is useful only with its material limitation stated.
 
+Distinguish a documented position from someone's characterization of it. A party's platform, an official's own statement, an enacted text, or a filed opinion documents a position; a commentator, opponent, campus or membership group, or unnamed spokesperson describing that position only characterizes it. Characterizations may support a `qualified` finding that names whose account it is, and cannot close a requirement whose evidence expectation asks for documented positions or institutional reasoning.
+
 Keep observed and projected propositions in separate findings. When the query asks what actually happened, projections may provide labeled context but cannot replace observed evidence or close an observed-impact gap. Judge the supplied passage in relation to the finding rather than assigning permanent quality to a publisher, domain, or document type.
 
 When evidence materially conflicts, do not silently choose one account. Describe the disagreement as a finding and cite every chunk necessary to ground it. If the conflict prevents a responsible answer, also return a gap describing the evidence or clarification needed to resolve or accurately characterize it.

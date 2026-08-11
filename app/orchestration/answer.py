@@ -3,7 +3,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.domain.validation import NonBlankText
 from app.features.answer_synthesis.errors import AnswerSynthesisError, InvalidAnswerProposalError
-from app.features.answer_synthesis.renderer import render_grounded_answer
+from app.features.answer_synthesis.renderer import cited_sources, render_grounded_answer
 from app.features.answer_synthesis.schemas import (
     AnswerAudit, GroundedAnswerRequest, NaturalAnswerDraft,
 )
@@ -54,7 +54,9 @@ class AnswerCoordinator:
             audit_ms=_elapsed(audit_started) - revision_ms, revision_ms=revision_ms,
             text=render_grounded_answer(
                 NaturalAnswerDraft(paragraphs=()) if degraded else draft,
-                request.evidence, note,
+                request.evidence,
+                final.paragraph_quotes if final and not degraded else {},
+                note,
             ),
         )
 
@@ -83,10 +85,7 @@ def _evidence_note(
         request.findings[index]
         for index in {index for item in draft.paragraphs for index in item.finding_indexes}
     ]
-    cited = {chunk for item in draft.paragraphs for chunk in item.supporting_chunk_ids}
-    sources = {
-        str(item.canonical_url) for item in request.evidence if item.chunk_id in cited
-    }
+    sources = cited_sources(draft, request.evidence)
     if min(audit.paragraph_support.values()) <= 3:
         strength = "The cited sources only partially establish this answer"
     elif any(item.evidence_basis == "projected" for item in findings):

@@ -77,6 +77,7 @@ class MarkdownChunker:
         ):
             groups.append(current)
         groups = self._merge_small_tail(content, groups)
+        groups = self._merge_undersized(content, groups)
         groups = [
             group for group in groups
             if self._units(content, group) >= self._substantive_minimum
@@ -85,6 +86,27 @@ class MarkdownChunker:
             self._make_chunk(document_id, content, index, group)
             for index, group in enumerate(groups)
         )
+
+    def _merge_undersized(
+        self, content: str, groups: list[list[_Span]]
+    ) -> list[list[_Span]]:
+        merged: list[list[_Span]] = []
+        pending: list[_Span] = []
+        for group in groups:
+            candidate = pending + group
+            pending = []
+            if self._units(content, candidate) >= self._minimum:
+                merged.append(candidate)
+                continue
+            if merged and self._units(
+                content, merged[-1] + candidate
+            ) <= self._maximum:
+                merged[-1] = merged[-1] + candidate
+                continue
+            pending = candidate
+        if pending:
+            merged.append(pending)
+        return merged
 
     def _atomic_spans(self, content: str) -> list[_Span]:
         headings: list[str] = []

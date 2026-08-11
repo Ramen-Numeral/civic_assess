@@ -28,7 +28,18 @@ from app.infrastructure.llm.errors import FailureKind, LLMError
 from app.prompts.base import Prompt
 
 
-NUMBER = re.compile(r"(?<!\w)\$?\d[\d,.]*(?:%|st|nd|rd|th)?(?!\w)")
+QUANTITY = re.compile(
+    r"(?<!\w)(?:"
+    r"\$\s*\d[\d,]*(?:\.\d+)?"
+    r"|\d[\d,]*\.\d+"
+    r"|\d{1,3}(?:,\d{3})+"
+    r"|\d+\s*(?:%|percent|thousand|million|billion|trillion)"
+    r"|\d{5,}"
+    r")",
+    re.I,
+)
+MAGNITUDE = re.compile(r"\s+")
+QUESTION = re.compile(r"\?+")
 URL_OR_MARKDOWN_LINK = re.compile(r"https?://|www\.|\[[^\]]+\]\([^)]+\)", re.I)
 LOGGER = logging.getLogger(__name__)
 
@@ -88,7 +99,7 @@ class QueryDiversificationService:
                 )
                 messages = [*messages, HumanMessage(content=json.dumps({
                     "validation_feedback": (
-                        f"{exc}. Correct the plan without adding facts, numbers, "
+                        f"{exc}. Correct the plan without adding facts, figures, "
                         "links, or scope absent from the validated query."
                     ),
                 }))]
@@ -161,18 +172,22 @@ class QueryDiversificationService:
     def _direct_evidence_plan(
         query: str, temporal_scope: TemporalScope | None = None,
     ) -> ResearchPlan:
+        scope = temporal_scope or TemporalScope()
         requirement_id = uuid4()
+        angle = "Direct evidence for the query as asked."
         return ResearchPlan(
             requirements=(ResearchRequirement(
                 requirement_id=requirement_id, description=query,
-                evidence_expectation="Evidence directly addressing the query.",
-                evidence_angles=(),
+                evidence_angles=(angle,),
             ),),
             query_set=ResearchQuerySet(
                 original_query=OriginalResearchQuery(query_id=uuid4(), text=query),
-                diversified_queries=(),
+                diversified_queries=(DiversifiedResearchQuery(
+                    query_id=uuid4(), requirement_ids=(requirement_id,),
+                    evidence_angle=angle, text=_with_spans(query, scope.spans),
+                ),),
             ),
-            temporal_scope=temporal_scope or TemporalScope(),
+            temporal_scope=scope,
         )
 
     async def plan_for_gaps(
@@ -262,7 +277,7 @@ class QueryDiversificationService:
         temporal_scope: TemporalScope,
     ) -> tuple[tuple[str, tuple[str, ...]], ...]:
         original = _normalize(original_query)
-        allowed_numbers = _numbers(allowed_text)
+        allowed_quantities = _quantities(allowed_text)
         required_time = tuple(_normalize(span) for span in temporal_scope.spans)
         deduped: dict[str, tuple[str, tuple[str, ...]]] = {}
         for query in queries:
@@ -270,7 +285,7 @@ class QueryDiversificationService:
             refs = tuple(dict.fromkeys(ref for ref in query.gap_refs if ref in gaps))
             if (not key or not refs or key == original
                     or URL_OR_MARKDOWN_LINK.search(query.text)
-                    or not _numbers(query.text) <= allowed_numbers
+                    or not _quantities(query.text) <= allowed_quantities
                     or not all(span in key for span in required_time)):
                 continue
             if key in deduped:
@@ -347,6 +362,11 @@ class QueryDiversificationService:
     def _require_decomposition(proposal, validated_query: str) -> None:
         if len(proposal.requirements) > 1:
             return
+        if len(QUESTION.findall(validated_query)) > 1:
+            raise InvalidQueryDiversificationError(
+                "The query asks more than one distinct question; return one "
+                "requirement for each"
+            )
         description = _normalize(proposal.requirements[0].description)
         query = _normalize(validated_query)
         if description == query or description in query or query in description:
@@ -358,7 +378,7 @@ class QueryDiversificationService:
 
     @staticmethod
     def _validate_plan(proposal, allowed_text: str) -> None:
-        allowed_numbers = _numbers(allowed_text)
+        allowed_quantities = _quantities(allowed_text)
         requirements = [
             _normalize(requirement.description)
             for requirement in proposal.requirements
@@ -377,7 +397,7 @@ class QueryDiversificationService:
                     "Evidence angles must be distinct within a requirement"
                 )
             if any(
-                not _numbers(value) <= allowed_numbers
+                not _quantities(value) <= allowed_quantities
                 for value in (
                     requirement.description,
                     *descriptions,
@@ -389,7 +409,7 @@ class QueryDiversificationService:
                 )
             ):
                 raise InvalidQueryDiversificationError(
-                    "Research plan introduced an unsupported number"
+                    "Research plan introduced an unsupported quantity"
                 )
 
     def _validate_proposal(
@@ -409,10 +429,10 @@ class QueryDiversificationService:
         if normalized_original in normalized_queries:
             raise ValueError("Diversified query must differ from the original")
 
-        allowed_numbers = _numbers(allowed_text)
+        allowed_quantities = _quantities(allowed_text)
         for query in queries:
-            if not _numbers(query.text) <= allowed_numbers:
-                raise ValueError("Diversified query introduced an unsupported number")
+            if not _quantities(query.text) <= allowed_quantities:
+                raise ValueError("Diversified query introduced an unsupported quantity")
             if URL_OR_MARKDOWN_LINK.search(query.text):
                 raise ValueError("Diversified query must not contain links")
 
@@ -430,5 +450,8 @@ def _with_spans(text: str, spans: tuple[str, ...]) -> str:
     return " ".join([text.strip(), *missing]) if missing else text
 
 
-def _numbers(value: str) -> set[str]:
-    return {match.group().casefold() for match in NUMBER.finditer(value)}
+def _quantities(value: str) -> set[str]:
+    return {
+        MAGNITUDE.sub("", match.group()).casefold()
+        for match in QUANTITY.finditer(value)
+    }
