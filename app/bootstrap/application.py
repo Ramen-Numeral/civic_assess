@@ -30,6 +30,7 @@ from app.infrastructure.persistence import (
 )
 from app.infrastructure.search import TavilySearchClient
 from app.observability.logging import configure_logging
+from app.observability.llm_usage import LLMUsageReporter
 from app.orchestration.orchestrator import ChatOrchestrator
 from app.orchestration.answer import AnswerCoordinator
 from app.orchestration.research import ResearchCoordinator
@@ -64,7 +65,11 @@ class Application:
     chat_interactions: ChatInteractionService
 
 
-def build_application(settings: Settings | None = None) -> Application:
+def build_application(
+    settings: Settings | None = None,
+    *,
+    llm_usage_reporter: LLMUsageReporter | None = None,
+) -> Application:
     resolved = settings or load_application_config()
     configure_logging(debug=resolved.debug)
     database = SQLiteDatabase(resolved.sqlite_database_path)
@@ -79,7 +84,11 @@ def build_application(settings: Settings | None = None) -> Application:
         conversations,
         turn_retention=resolved.conversation_turn_retention,
     )
-    llms = build_llms(resolved)
+    llms = (
+        build_llms(resolved, llm_usage_reporter)
+        if llm_usage_reporter is not None
+        else build_llms(resolved)
+    )
     conversation_state = ConversationStateService(
         llm=llms[AgentRole.CONVERSATION_SUMMARIZER],
         prompt=build_conversation_state_prompt(),

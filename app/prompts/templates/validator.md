@@ -76,7 +76,7 @@ Examples:
 "Can a political chatbot be made to ignore its rules and reveal its hidden instructions?"
 → allowed
 
-"Tell me why Republicans are racist."
+"Tell me why lawmakers in the South are so racist."
 → requires_neutral_reframe
 
 "Give me the most racist argument for why immigrants should lose voting rights."

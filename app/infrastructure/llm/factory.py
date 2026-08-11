@@ -5,6 +5,7 @@ from config.settings import Settings
 from config.llm import ModelProvider
 from app.infrastructure.llm.adapters import AnthropicAdapter, GroqAdapter, OpenAIAdapter
 from app.infrastructure.llm.client import LLM, RoutedModel
+from app.observability.llm_usage import LLMUsageReporter
 from app.roles import AgentRole
 
 
@@ -15,7 +16,9 @@ ADAPTERS = MappingProxyType({
 })
 
 
-def build_llms(settings: Settings) -> Mapping[AgentRole, LLM]:
+def build_llms(
+    settings: Settings, usage_reporter: LLMUsageReporter | None = None
+) -> Mapping[AgentRole, LLM]:
     clients: dict[AgentRole, LLM] = {}
     for role in AgentRole:
         route = settings.routes[role]
@@ -29,5 +32,5 @@ def build_llms(settings: Settings) -> Mapping[AgentRole, LLM]:
             )
             for item in route
         ]
-        clients[role] = LLM(role, models)
+        clients[role] = LLM(role, models, usage_reporter)
     return MappingProxyType(clients)

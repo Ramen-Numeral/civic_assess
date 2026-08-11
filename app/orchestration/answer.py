@@ -33,6 +33,11 @@ class GroundedAnswerResult(BaseModel):
     verification: ClaimVerificationResult
     discarded_claim_ids: tuple[UUID, ...]
     repair_attempted: bool
+    drafted_claim_count: int = 0
+    initial_verification: ClaimVerificationResult | None = None
+    replacement_verification: ClaimVerificationResult | None = None
+    drafting_ms: float = 0
+    scaffold_verification_ms: float = 0
     conflict_candidates: tuple[ConflictCandidate, ...] = ()
     rewritten_claim_ids: tuple[UUID, ...] = ()
     fallback_claim_ids: tuple[UUID, ...] = ()
@@ -69,7 +74,10 @@ class AnswerCoordinator:
         self._verification = verification
 
     async def answer(self, request: GroundedAnswerRequest) -> GroundedAnswerResult:
+        started = perf_counter()
         initial_draft = await self._synthesis.draft(request)
+        drafting_ms = _elapsed(started)
+        started = perf_counter()
         initial = await self._verification.verify(ClaimVerificationRequest(
             draft=initial_draft, evidence=request.evidence,
         ))
@@ -84,6 +92,7 @@ class AnswerCoordinator:
         )
         replacement_claims = ()
         replacement_results = ()
+        replacement_verification = None
         if failed_claims:
             failed_draft = GroundedAnswerDraft(claims=failed_claims)
             failed_verification = ClaimVerificationResult(
@@ -142,6 +151,7 @@ class AnswerCoordinator:
         verification = ClaimVerificationResult(
             model_version=initial.model_version, claims=tuple(final_results),
         )
+        scaffold_ms = _elapsed(started)
         started = perf_counter()
         conflicts = await self._verification.screen_conflicts(draft)
         conflict_ms = _elapsed(started)
@@ -199,6 +209,11 @@ class AnswerCoordinator:
             verification=verification,
             discarded_claim_ids=tuple(discarded),
             repair_attempted=bool(failed_claims),
+            drafted_claim_count=len(initial_draft.claims),
+            initial_verification=initial,
+            replacement_verification=replacement_verification,
+            drafting_ms=drafting_ms,
+            scaffold_verification_ms=scaffold_ms,
             conflict_candidates=conflicts,
             rewritten_claim_ids=tuple(rewritten_ids),
             fallback_claim_ids=tuple(fallback_ids),
