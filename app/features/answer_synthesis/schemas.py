@@ -3,131 +3,105 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
-from app.domain.research import ResearchRequirement
 from app.domain.validation import NonBlankText
-from app.features.evidence_coverage.schemas import (
-    EvidenceCoverageAssessment,
-    EvidenceRef,
-    RequirementRef,
-)
+from app.features.evidence_coverage.schemas import EvidenceBasis, SourceFitness
 from app.features.evidence_retrieval.schemas import EvidenceCandidate
 
 
-ClaimRef = Annotated[str, StringConstraints(pattern=r"^C[1-9]\d*$")]
+FindingRef = Annotated[str, StringConstraints(pattern=r"^F[1-9]\d*$")]
+ParagraphRef = Annotated[str, StringConstraints(pattern=r"^P[1-9]\d*$")]
+
+
+class AnswerFinding(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    statement: NonBlankText
+    supporting_chunk_ids: tuple[UUID, ...] = Field(min_length=1)
+    evidence_basis: EvidenceBasis
+    source_fitness: SourceFitness
+    qualification: NonBlankText | None = None
 
 
 class GroundedAnswerRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     canonical_query: NonBlankText
-    requirements: tuple[ResearchRequirement, ...] = Field(min_length=1)
-    coverage: EvidenceCoverageAssessment
+    findings: tuple[AnswerFinding, ...]
     evidence: tuple[EvidenceCandidate, ...]
 
     @model_validator(mode="after")
     def require_consistent_grounding(self) -> "GroundedAnswerRequest":
-        requirements = {item.requirement_id for item in self.requirements}
-        represented = {
-            item.requirement_id
-            for item in (*self.coverage.findings, *self.coverage.gaps)
-        }
-        if len(requirements) != len(self.requirements) or not represented <= requirements:
-            raise ValueError("Answer coverage references unknown requirements")
-        evidence = {item.chunk_id for item in self.evidence}
-        if len(evidence) != len(self.evidence):
-            raise ValueError("Answer evidence chunk IDs must be unique")
-        if any(
-            chunk_id not in evidence
-            for finding in self.coverage.findings
-            for chunk_id in finding.supporting_chunk_ids
+        available = {item.chunk_id for item in self.evidence}
+        if len(available) != len(self.evidence) or any(
+            chunk not in available
+            for finding in self.findings for chunk in finding.supporting_chunk_ids
         ):
-            raise ValueError("Answer coverage cites unavailable evidence")
+            raise ValueError("Answer findings require unique available evidence")
         return self
 
 
-class AnswerClaimProposal(BaseModel):
+class AnswerParagraphProposal(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    requirement_ref: RequirementRef
     text: NonBlankText
-    evidence_refs: tuple[EvidenceRef, ...] = Field(min_length=1)
-
-    def model_post_init(self, __context: object) -> None:
-        if len(set(self.evidence_refs)) != len(self.evidence_refs):
-            raise ValueError("Answer claim evidence references must be unique")
+    finding_refs: tuple[FindingRef, ...] = Field(min_length=1)
 
 
 class GroundedAnswerProposal(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    claims: tuple[AnswerClaimProposal, ...] = Field(min_length=1, max_length=20)
+    paragraphs: tuple[AnswerParagraphProposal, ...] = Field(min_length=1, max_length=6)
 
 
-class AnswerRepairClaimProposal(BaseModel):
+class ParagraphSupportProposal(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    replaces_claim_ref: ClaimRef
+    paragraph_ref: ParagraphRef
+    rating: int = Field(ge=1, le=5)
+
+
+class AnswerAuditProposal(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    paragraph_support: tuple[ParagraphSupportProposal, ...] = Field(min_length=1)
+    answer_quality: int = Field(ge=1, le=5)
+    revision_instructions: tuple[NonBlankText, ...] = Field(default=(), max_length=5)
+    evidence_note: NonBlankText
+
+
+class AnswerParagraph(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    paragraph_id: UUID
     text: NonBlankText
-    evidence_refs: tuple[EvidenceRef, ...] = Field(min_length=1)
-
-    def model_post_init(self, __context: object) -> None:
-        if len(set(self.evidence_refs)) != len(self.evidence_refs):
-            raise ValueError("Repaired claim evidence references must be unique")
-
-
-class GroundedAnswerRepairProposal(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    claims: tuple[AnswerRepairClaimProposal, ...] = Field(default=(), max_length=20)
-
-
-class ComposedSentenceProposal(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    claim_ref: ClaimRef
-    text: NonBlankText
-
-
-class GroundedAnswerCompositionProposal(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    sentences: tuple[ComposedSentenceProposal, ...] = Field(
-        min_length=1, max_length=20
-    )
-
-
-class AtomicAnswerClaim(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    claim_id: UUID
-    requirement_id: UUID
-    text: NonBlankText
+    finding_indexes: tuple[int, ...] = Field(min_length=1)
     supporting_chunk_ids: tuple[UUID, ...] = Field(min_length=1)
 
-    def model_post_init(self, __context: object) -> None:
-        if len(set(self.supporting_chunk_ids)) != len(self.supporting_chunk_ids):
-            raise ValueError("Answer claim support must be unique")
 
-
-class GroundedAnswerDraft(BaseModel):
+class NaturalAnswerDraft(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    claims: tuple[AtomicAnswerClaim, ...] = Field(max_length=20)
-
-    def model_post_init(self, __context: object) -> None:
-        normalized = [" ".join(item.text.split()).casefold() for item in self.claims]
-        if len(normalized) != len(set(normalized)):
-            raise ValueError("Atomic answer claims must be distinct")
+    paragraphs: tuple[AnswerParagraph, ...] = Field(max_length=6)
 
 
-class RepairedAnswerClaim(BaseModel):
+class AnswerAudit(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    replaces_claim_id: UUID
-    claim: AtomicAnswerClaim
+    paragraph_support: dict[UUID, Annotated[int, Field(ge=1, le=5)]]
+    answer_quality: int = Field(ge=1, le=5)
+    revision_instructions: tuple[NonBlankText, ...] = ()
+    evidence_note: NonBlankText
 
+    @property
+    def verdict(self) -> str:
+        return "pass" if self.answer_quality == 5 and all(
+            rating == 5 for rating in self.paragraph_support.values()
+        ) else "revise"
 
-class RepairedAnswerDraft(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    replacements: tuple[RepairedAnswerClaim, ...]
+    @property
+    def unsupported_paragraph_ids(self) -> tuple[UUID, ...]:
+        return tuple(
+            paragraph_id
+            for paragraph_id, rating in self.paragraph_support.items()
+            if rating <= 2
+        )

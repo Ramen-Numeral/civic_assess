@@ -1,4 +1,5 @@
 import re
+from collections import Counter
 
 
 LABEL = r"(?:[^\[\]\n]|\[[^\[\]\n]*\])*"
@@ -21,6 +22,10 @@ FILE_DOWNLOAD = re.compile(
     r"\[(?:PDF\s*-\s*)?[<>]?\s*\d+(?:\.\d+)?\s*(?:KB|MB|GB)\]\s*$",
     re.I,
 )
+CONTENTS = re.compile(r"(?:table of )?contents", re.I)
+ORDERED_ENTRY = re.compile(r"^\s*\d+[.)]\s+\S")
+SPACED_HEADER = re.compile(r"(?:\b[A-Z]\s+){5,}[A-Z]\b")
+EMAIL = re.compile(r"\b[^\s@]+@[^\s@]+\.[^\s@]+\b")
 WORD = re.compile(r"\b[\w’'-]+\b")
 NUMBERED_CITATION = re.compile(r"^(?:\[\d+\]|\d{1,3}[.)]?)\s+")
 NUMBERED_CITATIONS = re.compile(r"(?:^|\s)(?:\[\d+\]|\d{1,3}[.)]?)(?=\s+)")
@@ -78,18 +83,35 @@ NOISE = {
 
 
 def normalize_markdown(content: str, *, title: str | None = None) -> str:
+    source = content.replace("\r\n", "\n").replace("\r", "\n").splitlines()
+    occurrences = Counter(" ".join(line.split()).casefold() for line in source)
     lines: list[str] = []
     previous = ""
     skip_definition_value = False
+    skip_contents = False
     title_labels = {
         value.strip("#*_ -").casefold()
         for value in ((title or ""), *((title or "").split("|", 1)[:1]))
         if value.strip()
     }
-    for raw_line in content.replace("\r\n", "\n").replace("\r", "\n").splitlines():
+    for raw_line in source:
         stripped = raw_line.strip()
         label = stripped.strip("#*_ -").casefold()
         plain_label = label.rstrip(":")
+        if CONTENTS.fullmatch(plain_label):
+            skip_contents = True
+            continue
+        if skip_contents:
+            if not stripped or ORDERED_ENTRY.match(stripped):
+                continue
+            skip_contents = False
+        if (
+            stripped
+            and occurrences[" ".join(stripped.split()).casefold()] >= 3
+            and not STRUCTURAL.match(stripped)
+            and not re.search(r"[.!?][\"')\]]?$", stripped)
+        ):
+            continue
         trailing_section = bool(
             TRAILING_SECTION.fullmatch(plain_label)
         ) or plain_label.startswith(("newsletter ", "sign up", "subscribe"))
@@ -128,6 +150,7 @@ def normalize_markdown(content: str, *, title: str | None = None) -> str:
         line = AUTOLINK.sub("", line)
         line = BARE_URL.sub("", line)
         line = WWW_URL.sub("", line)
+        line = SPACED_HEADER.sub("", line)
         line = line.replace("[]()", "").replace("**", "").replace("__", "")
         line = re.sub(r"[ \t]+", " ", line).strip()
         normalized = line.casefold()
@@ -159,6 +182,8 @@ def _clean_blocks(lines: list[str]) -> str:
             current = []
     cleaned = []
     for block in blocks:
+        if sum(len(EMAIL.findall(line)) for line in block) >= 2:
+            continue
         citations = sum(_citation_line(line) for line in block)
         reference_numbers = sum(
             len(NUMBERED_CITATIONS.findall(line)) for line in block

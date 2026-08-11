@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from config.settings import Settings, load_application_config
 from app.application import ChatInteractionService
 from app.features.answer_synthesis import AnswerSynthesisService
-from app.features.claim_verification import ClaimVerificationService
 from app.features.conversation_context import ConversationContextService
 from app.features.conversation_memory import ConversationService
 from app.features.conversation_state import (
@@ -36,8 +35,7 @@ from app.orchestration.answer import AnswerCoordinator
 from app.orchestration.research import ResearchCoordinator
 from app.prompts.factory import (
     build_conversation_state_prompt,
-    build_answer_repair_prompt,
-    build_answer_composition_prompt,
+    build_answer_audit_prompt,
     build_answer_synthesis_prompt,
     build_evidence_coverage_prompt,
     build_gap_query_planning_prompt,
@@ -57,7 +55,6 @@ class Application:
     conversations: ConversationService
     conversation_contexts: ConversationContextService
     answer_synthesis: AnswerSynthesisService
-    claim_verification: ClaimVerificationService
     answers: AnswerCoordinator
     evidence_coverage: EvidenceCoverageService
     evidence_retrieval: EvidenceRetrievalService
@@ -106,19 +103,11 @@ def build_application(
     )
     answer_synthesis = AnswerSynthesisService(
         llm=llms[AgentRole.ANSWER_WRITER],
+        audit_llm=llms[AgentRole.ANSWER_AUDITOR],
         prompt=build_answer_synthesis_prompt(),
-        repair_prompt=build_answer_repair_prompt(),
-        composition_prompt=build_answer_composition_prompt(),
+        audit_prompt=build_answer_audit_prompt(),
     )
-    claim_verification = ClaimVerificationService(
-        resolved.claim_nli_model_id,
-        resolved.claim_nli_model_revision,
-        batch_size=resolved.claim_nli_batch_size,
-        device=resolved.claim_nli_device,
-        entailment_threshold=resolved.claim_nli_entailment_threshold,
-        contradiction_threshold=resolved.claim_nli_contradiction_threshold,
-    )
-    answers = AnswerCoordinator(answer_synthesis, claim_verification)
+    answers = AnswerCoordinator(answer_synthesis)
     query_planner = QueryDiversificationService(
         llm=llms[AgentRole.QUERY_DIVERSIFIER],
         prompt=build_query_diversification_prompt(),
@@ -202,7 +191,6 @@ def build_application(
         conversations=conversations,
         conversation_contexts=conversation_contexts,
         answer_synthesis=answer_synthesis,
-        claim_verification=claim_verification,
         answers=answers,
         evidence_coverage=evidence_coverage,
         evidence_retrieval=evidence_retrieval,

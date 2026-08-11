@@ -54,20 +54,6 @@ class Settings(BaseSettings):
     evidence_coverage_candidate_count: int = Field(default=12, ge=1)
     evidence_coverage_context_max: int = Field(default=16, ge=1)
     evidence_max_chunks_per_document: int = Field(default=2, ge=1)
-    claim_nli_model_id: str = Field(
-        default="cross-encoder/nli-deberta-v3-small", min_length=1
-    )
-    claim_nli_model_revision: str = Field(
-        default="fa2804872c3b4bd748f38c0185cc85775361e735", min_length=1
-    )
-    claim_nli_batch_size: int = Field(default=16, ge=1, le=256)
-    claim_nli_device: str = Field(default="cpu", min_length=1)
-    claim_nli_entailment_threshold: float = Field(
-        default=0.8, ge=0, le=1, allow_inf_nan=False
-    )
-    claim_nli_contradiction_threshold: float = Field(
-        default=0.8, ge=0, le=1, allow_inf_nan=False
-    )
     routes: Routes
     provider_credentials: Mapping[ModelProvider, SecretStr]
 
@@ -187,21 +173,6 @@ def load_application_config(
         ),
         evidence_max_chunks_per_document=values.get(
             "EVIDENCE_MAX_CHUNKS_PER_DOCUMENT", 2
-        ),
-        claim_nli_model_id=values.get(
-            "CLAIM_NLI_MODEL_ID", "cross-encoder/nli-deberta-v3-small"
-        ),
-        claim_nli_model_revision=values.get(
-            "CLAIM_NLI_MODEL_REVISION",
-            "fa2804872c3b4bd748f38c0185cc85775361e735",
-        ),
-        claim_nli_batch_size=values.get("CLAIM_NLI_BATCH_SIZE", 16),
-        claim_nli_device=values.get("CLAIM_NLI_DEVICE", "cpu"),
-        claim_nli_entailment_threshold=values.get(
-            "CLAIM_NLI_ENTAILMENT_THRESHOLD", 0.8
-        ),
-        claim_nli_contradiction_threshold=values.get(
-            "CLAIM_NLI_CONTRADICTION_THRESHOLD", 0.8
         ),
         routes=routes,
         provider_credentials=credentials,

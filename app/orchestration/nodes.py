@@ -3,7 +3,7 @@ from app.features.input_validation.errors import InputValidationError
 from app.features.input_validation.preflight import preflight_input
 from app.features.input_validation.schemas import InputValidationRequest
 from app.features.input_validation.service import InputValidationService
-from app.features.answer_synthesis.schemas import GroundedAnswerRequest
+from app.features.answer_synthesis.schemas import AnswerFinding, GroundedAnswerRequest
 from app.features.query_reframe.errors import InvalidReframeProposalError
 from app.features.query_reframe.schemas import (
     QueryReframeProposal,
@@ -131,8 +131,13 @@ def build_answer_node(coordinator: AnswerCoordinator) -> AgentNode[ChatState]:
         research = state["research_result"]
         result = await coordinator.answer(GroundedAnswerRequest(
             canonical_query=state["gate_result"].normalized_query,
-            requirements=research.plan.requirements,
-            coverage=research.cumulative_coverage,
+            findings=tuple(AnswerFinding(
+                statement=item.statement,
+                supporting_chunk_ids=item.supporting_chunk_ids,
+                evidence_basis=item.evidence_basis,
+                source_fitness=item.source_fitness,
+                qualification=item.qualification,
+            ) for item in research.cumulative_coverage.findings),
             evidence=research.cumulative_evidence,
         ))
         return {"answer_result": result}

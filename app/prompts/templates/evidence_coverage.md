@@ -22,6 +22,7 @@ Each finding must:
 
 - belong to exactly one supplied requirement using its `R` reference;
 - state a short, query-material proposition rather than answer the query;
+- use exactly two concise sentences: what the evidence establishes, then why it matters to the canonical query;
 - cite one or more supplied `E` references;
 - cite only chunks that materially support the proposition, provide necessary joint support, or establish the described disagreement.
 - characterize its evidence basis and source fitness accurately, including any required qualification.

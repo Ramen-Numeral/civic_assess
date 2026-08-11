@@ -1,53 +1,41 @@
-from app.features.answer_synthesis.schemas import GroundedAnswerDraft
-from app.features.evidence_coverage.schemas import EvidenceCoverageAssessment
+from html import escape
+
+from app.features.answer_synthesis.schemas import NaturalAnswerDraft
 from app.features.evidence_retrieval.schemas import EvidenceCandidate
 
 
 def render_grounded_answer(
-    draft: GroundedAnswerDraft,
-    coverage: EvidenceCoverageAssessment,
-    evidence: tuple[EvidenceCandidate, ...],
+    draft: NaturalAnswerDraft, evidence: tuple[EvidenceCandidate, ...], evidence_note: str,
 ) -> str:
     available = {item.chunk_id: item for item in evidence}
-    cited = []
-    numbers = {}
-    for claim in draft.claims:
-        for chunk_id in claim.supporting_chunk_ids:
+    cited, numbers = [], {}
+    for paragraph in draft.paragraphs:
+        for chunk_id in paragraph.supporting_chunk_ids:
             if chunk_id not in available:
-                raise ValueError("Rendered claim cites unavailable evidence")
-            if chunk_id not in numbers:
-                numbers[chunk_id] = len(cited) + 1
-                cited.append(available[chunk_id])
-
-    sections = []
-    if draft.claims:
-        sentences = []
-        for claim in draft.claims:
-            markers = "".join(
-                f"[{numbers[chunk_id]}]" for chunk_id in claim.supporting_chunk_ids
-            )
-            sentences.append(f"{claim.text} {markers}")
-        sections.append(" ".join(sentences))
-    else:
-        sections.append(
-            "The available evidence did not support a sufficiently verified "
-            "answer to this question."
-        )
-    if coverage.gaps:
-        sections.append("\n".join([
-            "Limitations",
-            *(
-                f"- The available evidence did not establish the following: "
-                f"{gap.missing_evidence}"
-                for gap in coverage.gaps
-            ),
-        ]))
+                raise ValueError("Rendered paragraph cites unavailable evidence")
+            source = available[chunk_id]
+            url = str(source.canonical_url)
+            if url not in numbers:
+                numbers[url] = len(cited) + 1
+                cited.append((source, []))
+            cited[numbers[url] - 1][1].append(source)
+    body = "\n\n".join(
+        f"{item.text} {''.join(f'[{n}](#source-{n})' for n in dict.fromkeys(
+            numbers[str(available[c].canonical_url)] for c in item.supporting_chunk_ids
+        ))}"
+        for item in draft.paragraphs
+    ) or "The approved evidence did not support a sufficiently grounded answer."
+    sections = [body, f"About this answer: {evidence_note}"]
     if cited:
-        sections.append("\n".join([
-            "Sources",
-            *(
-                f"{index}. {item.title} — {item.canonical_url}"
-                for index, item in enumerate(cited, 1)
-            ),
-        ]))
+        entries = []
+        for i, (source, chunks) in enumerate(cited, 1):
+            excerpts = "\n\n".join(
+                escape(chunk.text) for chunk in {item.chunk_id: item for item in chunks}.values()
+            )
+            entries.append(
+                f'<details id="source-{i}"><summary>[{i}] '
+                f'<a href="{source.canonical_url}">{escape(source.title)}</a></summary>\n\n'
+                f'{excerpts}\n\n</details>'
+            )
+        sections.append("Sources\n\n" + "\n\n".join(entries))
     return "\n\n".join(sections)

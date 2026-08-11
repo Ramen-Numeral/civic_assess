@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from uuid import uuid4
 
@@ -28,6 +29,7 @@ from app.prompts.base import Prompt
 
 NUMBER = re.compile(r"(?<!\w)\$?\d[\d,.]*(?:%|st|nd|rd|th)?(?!\w)")
 URL_OR_MARKDOWN_LINK = re.compile(r"https?://|www\.|\[[^\]]+\]\([^)]+\)", re.I)
+LOGGER = logging.getLogger(__name__)
 
 
 class QueryDiversificationService:
@@ -63,8 +65,28 @@ class QueryDiversificationService:
                 )
             ),
         ]
-        proposal = await self._propose(messages, InitialResearchPlanProposal)
-        self._validate_plan(proposal, request.validated_query)
+        for attempt in range(2):
+            try:
+                proposal = await self._propose(messages, InitialResearchPlanProposal)
+                self._validate_plan(proposal, request.validated_query)
+                break
+            except InvalidQueryDiversificationError as exc:
+                if attempt:
+                    LOGGER.warning(
+                        "Initial research plan degraded to direct evidence",
+                        extra={"event": "research.plan.direct_fallback"},
+                    )
+                    return self._direct_evidence_plan(request.validated_query)
+                LOGGER.warning(
+                    "Initial research plan failed validation; retrying",
+                    extra={"event": "research.plan.contract_repair"},
+                )
+                messages = [*messages, HumanMessage(content=json.dumps({
+                    "validation_feedback": (
+                        f"{exc}. Correct the plan without adding facts, numbers, "
+                        "links, or scope absent from the validated query."
+                    ),
+                }))]
         priority = sorted(
             range(len(proposal.requirements)),
             key=lambda index: -len(proposal.requirements[index].evidence_angles),
@@ -115,6 +137,24 @@ class QueryDiversificationService:
             query_set=ResearchQuerySet(
                 original_query=original_query,
                 diversified_queries=diversified,
+            ),
+        )
+
+    @staticmethod
+    def _direct_evidence_plan(query: str) -> ResearchPlan:
+        requirement_id = uuid4()
+        return ResearchPlan(
+            requirements=(ResearchRequirement(
+                requirement_id=requirement_id, description=query,
+                evidence_expectation="Evidence directly addressing the query.",
+                evidence_angles=("Direct evidence",),
+            ),),
+            query_set=ResearchQuerySet(
+                original_query=OriginalResearchQuery(query_id=uuid4(), text=query),
+                diversified_queries=(DiversifiedResearchQuery(
+                    query_id=uuid4(), requirement_ids=(requirement_id,),
+                    evidence_angle="Direct evidence", text=f"{query} direct evidence",
+                ),),
             ),
         )
 
