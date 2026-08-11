@@ -65,45 +65,56 @@ class QueryDiversificationService:
         ]
         proposal = await self._propose(messages, InitialResearchPlanProposal)
         self._validate_plan(proposal, request.validated_query)
-        queries = tuple(
-            angle
-            for requirement in proposal.requirements
-            for angle in requirement.evidence_angles
+        priority = sorted(
+            range(len(proposal.requirements)),
+            key=lambda index: -len(proposal.requirements[index].evidence_angles),
         )
+        positions = [0] * len(proposal.requirements)
+        selected = []
+        while len(selected) < self._query_count:
+            before = len(selected)
+            for index in priority:
+                angles = proposal.requirements[index].evidence_angles
+                if positions[index] < len(angles):
+                    selected.append((index, angles[positions[index]]))
+                    positions[index] += 1
+                    if len(selected) == self._query_count:
+                        break
+            if len(selected) == before:
+                break
+        queries = tuple(angle for _, angle in selected)
         self._validate_queries(
             request.validated_query, queries, request.validated_query, minimum=1,
         )
-        if len(queries) > self._query_count:
-            raise InvalidQueryDiversificationError(
-                "Research plan exceeded the evidence-angle budget"
-            )
-        requirements = []
-        diversified = []
-        for proposed in proposal.requirements:
-            requirement_id = uuid4()
-            angles = []
-            for angle in proposed.evidence_angles:
-                angles.append(angle.description)
-                diversified.append(DiversifiedResearchQuery(
-                    query_id=uuid4(),
-                    requirement_ids=(requirement_id,),
-                    evidence_angle=angle.description,
-                    text=angle.text,
-                ))
-            requirements.append(ResearchRequirement(
+        requirement_ids = tuple(uuid4() for _ in proposal.requirements)
+        retained = [[] for _ in proposal.requirements]
+        for index, angle in selected:
+            retained[index].append(angle.description)
+        requirements = tuple(
+            ResearchRequirement(
                 requirement_id=requirement_id,
                 description=proposed.description,
                 evidence_expectation=proposed.evidence_expectation,
-                evidence_angles=tuple(angles),
+                evidence_angles=tuple(retained[index]),
+            )
+            for index, (requirement_id, proposed) in enumerate(zip(
+                requirement_ids, proposal.requirements, strict=True,
             ))
+        )
+        diversified = tuple(DiversifiedResearchQuery(
+            query_id=uuid4(),
+            requirement_ids=(requirement_ids[index],),
+            evidence_angle=angle.description,
+            text=angle.text,
+        ) for index, angle in selected)
         original_query = OriginalResearchQuery(
             query_id=uuid4(), text=request.validated_query,
         )
         return ResearchPlan(
-            requirements=tuple(requirements),
+            requirements=requirements,
             query_set=ResearchQuerySet(
                 original_query=original_query,
-                diversified_queries=tuple(diversified),
+                diversified_queries=diversified,
             ),
         )
 
@@ -157,30 +168,69 @@ class QueryDiversificationService:
                 gap.description, gap.missing_evidence,
             )),
         ])
-        self._validate_queries(
-            request.original_query.text,
-            proposal.queries,
-            allowed_text,
-            minimum=0,
+        queries = self._usable_gap_queries(
+            proposal.queries, gaps, request.original_query.text, allowed_text,
         )
+        if not queries:
+            retry = [*messages, HumanMessage(content=json.dumps({
+                "validation_feedback": (
+                    "No proposed query was usable. Return only valid, distinct "
+                    "gap-targeted queries using the supplied gap references."
+                ),
+            }))]
+            proposal = await self._propose(retry, GapQueryPlanningProposal)
+            queries = self._usable_gap_queries(
+                proposal.queries, gaps, request.original_query.text, allowed_text,
+            )
         diversified = []
-        for query in proposal.queries:
-            if any(ref not in gaps for ref in query.gap_refs):
-                raise InvalidQueryDiversificationError(
-                    "Gap query targets an unknown gap"
-                )
-            targeted = tuple(gaps[ref] for ref in query.gap_refs)
+        for text, refs in queries:
+            targeted = tuple(gaps[ref] for ref in refs)
             diversified.append(DiversifiedResearchQuery(
                 query_id=uuid4(),
                 requirement_ids=tuple(dict.fromkeys(
                     gap.requirement_id for gap in targeted
                 )),
-                text=query.text,
+                text=text,
             ))
         return ResearchQuerySet(
             original_query=request.original_query,
             diversified_queries=tuple(diversified),
         )
+
+    def _usable_gap_queries(
+        self, queries, gaps, original_query: str, allowed_text: str,
+    ) -> tuple[tuple[str, tuple[str, ...]], ...]:
+        original = _normalize(original_query)
+        allowed_numbers = _numbers(allowed_text)
+        deduped: dict[str, tuple[str, tuple[str, ...]]] = {}
+        for query in queries:
+            key = _normalize(query.text)
+            refs = tuple(dict.fromkeys(ref for ref in query.gap_refs if ref in gaps))
+            if (not key or not refs or key == original
+                    or URL_OR_MARKDOWN_LINK.search(query.text)
+                    or not _numbers(query.text) <= allowed_numbers):
+                continue
+            if key in deduped:
+                text, prior = deduped[key]
+                deduped[key] = (text, tuple(dict.fromkeys((*prior, *refs))))
+            else:
+                deduped[key] = (query.text, refs)
+        candidates = list(deduped.values())
+        if len(candidates) <= self._query_count:
+            return tuple(candidates)
+        priority = sorted(
+            gaps, key=lambda ref: -sum(ref in refs for _, refs in candidates)
+        )
+        selected = []
+        while candidates and len(selected) < self._query_count:
+            for ref in priority:
+                match = next((index for index, (_, refs) in enumerate(candidates)
+                              if ref in refs), None)
+                if match is not None:
+                    selected.append(candidates.pop(match))
+                    if len(selected) == self._query_count:
+                        break
+        return tuple(selected)
 
     async def _propose(self, messages, schema):
         try:

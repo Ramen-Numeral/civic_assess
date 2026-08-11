@@ -44,7 +44,7 @@ class ResearchRequirement(BaseModel):
     requirement_id: UUID
     description: NonBlankText
     evidence_expectation: NonBlankText | None = None
-    evidence_angles: tuple[NonBlankText, ...] = Field(min_length=1)
+    evidence_angles: tuple[NonBlankText, ...] = ()
 
     @model_validator(mode="after")
     def require_unique_angles(self) -> "ResearchRequirement":

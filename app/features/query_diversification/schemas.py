@@ -11,9 +11,6 @@ PlanningText = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=300),
 ]
-GapRef = Annotated[str, StringConstraints(pattern=r"^G[1-9]\d*$")]
-
-
 class QueryDiversificationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -60,8 +57,8 @@ class InitialResearchPlanProposal(BaseModel):
 class ProposedResearchQuery(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    text: PlanningText
-    gap_refs: tuple[GapRef, ...] = Field(min_length=1)
+    text: str
+    gap_refs: tuple[str, ...]
 
 
 class GapQueryPlanningProposal(BaseModel):
