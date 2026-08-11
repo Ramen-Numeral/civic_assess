@@ -1,3 +1,4 @@
+import logging
 from time import perf_counter
 from pydantic import BaseModel, ConfigDict
 
@@ -8,6 +9,18 @@ from app.features.answer_synthesis.schemas import (
     AnswerAudit, GroundedAnswerRequest, NaturalAnswerDraft,
 )
 from app.features.answer_synthesis.service import AnswerSynthesisService
+
+
+LOGGER = logging.getLogger(__name__)
+AUDIT_ATTEMPTS = 3
+INCOMPLETE_VALIDATION_WARNING = (
+    "The system could not fully validate this response. Please ask follow-up "
+    "questions to clarify any important claims."
+)
+UNABLE_TO_COMPLETE_MESSAGE = (
+    "I'm sorry, we couldn't complete your request. Would you like to try asking "
+    "something else or a similar question?"
+)
 
 
 class GroundedAnswerResult(BaseModel):
@@ -36,28 +49,48 @@ class AnswerCoordinator:
         audit_started = perf_counter()
         first = await self._audit(request, initial)
         draft, final, revision_attempted, revision_ms = initial, first, False, 0
-        if first and first.verdict == "revise":
+        accepted = bool(first and first.passes(5))
+        validation_incomplete = False
+        if first and not accepted:
             revision_attempted, revision_started = True, perf_counter()
+            revised = None
+            revised_audit = None
             try:
-                draft = await self._synthesis.revise(request, initial, first)
-                final = await self._audit(request, draft)
+                revised = await self._synthesis.revise(request, initial, first)
+                revised_audit = await self._audit(request, revised)
             except (AnswerSynthesisError, InvalidAnswerProposalError):
-                draft, final = initial, first
+                pass
             revision_ms = _elapsed(revision_started)
-        degraded = bool(final and final.unsupported_paragraph_ids)
-        revision_failed = bool(revision_attempted and final and final.verdict == "revise")
+            accepted = bool(revised_audit and revised_audit.passes(4))
+            if accepted:
+                draft, final = revised, revised_audit
+            else:
+                candidates = [(initial, first)]
+                if revised is not None and revised_audit is not None:
+                    candidates.append((revised, revised_audit))
+                eligible = [
+                    candidate for candidate in candidates
+                    if candidate[1].answer_quality >= 3
+                ]
+                if eligible:
+                    # max() retains the first item when scores tie, preferring the
+                    # earliest draft as the safer known version.
+                    draft, final = max(
+                        eligible, key=lambda candidate: candidate[1].answer_quality,
+                    )
+                    validation_incomplete = True
+        degraded = not accepted and not validation_incomplete
+        revision_failed = revision_attempted and not accepted
         note = _evidence_note(request, draft, final, degraded)
         return GroundedAnswerResult(
             initial_draft=initial, draft=draft, initial_audit=first, final_audit=final,
             revision_attempted=revision_attempted, revision_failed=revision_failed,
             degraded=degraded, drafting_ms=drafting_ms,
             audit_ms=_elapsed(audit_started) - revision_ms, revision_ms=revision_ms,
-            text=render_grounded_answer(
-                NaturalAnswerDraft(paragraphs=()) if degraded else draft,
-                request.evidence,
-                final.paragraph_quotes if final and not degraded else {},
-                note,
-            ),
+            text=(UNABLE_TO_COMPLETE_MESSAGE if degraded else render_grounded_answer(
+                draft, request.evidence, note,
+                INCOMPLETE_VALIDATION_WARNING if validation_incomplete else None,
+            )),
         )
 
     async def _audit(
@@ -65,10 +98,37 @@ class AnswerCoordinator:
     ) -> AnswerAudit | None:
         if not draft.paragraphs:
             return None
-        try:
-            return await self._synthesis.audit(request, draft)
-        except (AnswerSynthesisError, InvalidAnswerProposalError):
-            return None
+        expected = ", ".join(f"P{index}" for index in range(1, len(draft.paragraphs) + 1))
+        validation_feedback = None
+        for attempt in range(1, AUDIT_ATTEMPTS + 1):
+            try:
+                return await self._synthesis.audit(
+                    request, draft, validation_feedback=validation_feedback,
+                )
+            except (AnswerSynthesisError, InvalidAnswerProposalError) as exc:
+                LOGGER.warning(
+                    "Answer audit attempt failed",
+                    extra={
+                        "event": "answer.audit.attempt_failed",
+                        "attempt": attempt,
+                        "max_attempts": AUDIT_ATTEMPTS,
+                        "error_type": type(exc).__name__,
+                        "error_message": str(exc),
+                    },
+                )
+                validation_feedback = (
+                    f"The prior audit was rejected: {exc}. Return exactly one "
+                    "paragraph_support item for each proposed paragraph, in this "
+                    f"order: {expected}. Do not omit, duplicate, or reorder refs."
+                )
+        LOGGER.error(
+            "Answer audit retries exhausted",
+            extra={
+                "event": "answer.audit.retries_exhausted",
+                "attempts": AUDIT_ATTEMPTS,
+            },
+        )
+        return None
 
 
 def _evidence_note(

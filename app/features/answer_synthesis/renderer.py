@@ -37,8 +37,8 @@ def cited_sources(
 def render_grounded_answer(
     draft: NaturalAnswerDraft,
     evidence: tuple[EvidenceCandidate, ...],
-    quotes: dict[UUID, dict[UUID, str]],
     evidence_note: str,
+    validation_warning: str | None = None,
 ) -> str:
     available = {item.chunk_id: item for item in evidence}
     references = {str(i): item for i, item in enumerate(evidence, 1)}
@@ -48,9 +48,6 @@ def render_grounded_answer(
         for chunk in paragraph.supporting_chunk_ids
     ):
         raise ValueError("Rendered paragraph cites unavailable evidence")
-    spans = {
-        chunk: text for paragraph in quotes.values() for chunk, text in paragraph.items()
-    }
     sources = cited_sources(draft, evidence)
     numbers = {url: index for index, url in enumerate(sources, 1)}
     cited = [(available[chunks[0]], chunks) for chunks in sources.values()]
@@ -76,21 +73,17 @@ def render_grounded_answer(
     body = "\n\n".join(paragraphs) or (
         "The approved evidence did not support a sufficiently grounded answer."
     )
-    sections = [body, f"About this answer: {evidence_note}"]
+    sections = []
+    if validation_warning:
+        sections.append(f"> **Validation warning:** {validation_warning}")
+    sections.extend([body, f"About this answer: {evidence_note}"])
     if cited:
-        entries = []
-        for index, (source, chunks) in enumerate(cited, 1):
-            excerpts = "\n\n".join(
-                f"“{escape(spans[chunk])}”" if chunk in spans
-                else escape(available[chunk].text)
-                for chunk in dict.fromkeys(chunks)
-            )
-            entries.append(
-                f'<details id="source-{index}"><summary>[{index}] '
-                f'<a href="{source.canonical_url}">{escape(source.title)}</a></summary>\n\n'
-                f'{excerpts}\n\n</details>'
-            )
-        sections.append("Sources\n\n" + "\n\n".join(entries))
+        entries = [
+            f'<div id="source-{index}">[{index}] '
+            f'<a href="{source.canonical_url}">{escape(source.title)}</a></div>'
+            for index, (source, _) in enumerate(cited, 1)
+        ]
+        sections.append("Sources\n\n" + "\n".join(entries))
     return "\n\n".join(sections)
 
 

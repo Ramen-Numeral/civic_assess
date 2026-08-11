@@ -11,7 +11,6 @@ from app.features.evidence_retrieval.schemas import EvidenceCandidate
 
 FindingRef = Annotated[str, StringConstraints(pattern=r"^F[1-9]\d*$")]
 ParagraphRef = Annotated[str, StringConstraints(pattern=r"^P[1-9]\d*$")]
-EvidenceRef = Annotated[str, StringConstraints(pattern=r"^E[1-9]\d*$")]
 
 
 class AnswerFinding(BaseModel):
@@ -57,20 +56,12 @@ class GroundedAnswerProposal(BaseModel):
     paragraphs: tuple[AnswerParagraphProposal, ...] = Field(min_length=1, max_length=6)
 
 
-class EvidenceQuoteProposal(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    evidence_ref: EvidenceRef
-    text: NonBlankText
-
-
 class ParagraphSupportProposal(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     paragraph_ref: ParagraphRef
     support: int = Field(ge=1, le=5)
     scope: int = Field(ge=1, le=5)
-    quotes: tuple[EvidenceQuoteProposal, ...] = ()
 
 
 class AnswerAuditProposal(BaseModel):
@@ -101,16 +92,18 @@ class AnswerAudit(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     paragraph_support: dict[UUID, Annotated[int, Field(ge=1, le=5)]]
-    paragraph_quotes: dict[UUID, dict[UUID, NonBlankText]] = Field(default_factory=dict)
     answer_quality: int = Field(ge=1, le=5)
     revision_instructions: tuple[NonBlankText, ...] = ()
     evidence_note: NonBlankText
 
+    def passes(self, minimum: int) -> bool:
+        return self.answer_quality >= minimum and all(
+            rating >= minimum for rating in self.paragraph_support.values()
+        )
+
     @property
     def verdict(self) -> str:
-        return "pass" if self.answer_quality == 5 and all(
-            rating == 5 for rating in self.paragraph_support.values()
-        ) else "revise"
+        return "pass" if self.passes(5) else "revise"
 
     @property
     def unsupported_paragraph_ids(self) -> tuple[UUID, ...]:

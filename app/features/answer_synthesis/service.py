@@ -24,7 +24,6 @@ PARENTHETICAL_REF = re.compile(r"\s*\((?:[FEP][1-9]\d*(?:\s*[/,]\s*)?)+\)")
 INLINE_EVIDENCE_REF = re.compile(r"\[\[E([1-9]\d*)\]\]")
 INLINE_FINDING_REF = re.compile(r"\[\[F([1-9]\d*)\]\]")
 UNRESOLVED_MARKER = re.compile(r"\s*\[\[[FP][1-9]\d*\]\]")
-WHITESPACE = re.compile(r"\s+")
 
 
 class AnswerSynthesisService:
@@ -47,7 +46,10 @@ class AnswerSynthesisService:
         return await self._write(request, draft, audit.revision_instructions)
 
     async def audit(
-        self, request: GroundedAnswerRequest, draft: NaturalAnswerDraft,
+        self,
+        request: GroundedAnswerRequest,
+        draft: NaturalAnswerDraft,
+        validation_feedback: str | None = None,
     ) -> AnswerAudit:
         payload, _, evidence_refs = _answer_view(request)
         payload["temporal_scope"] = list(request.temporal_scope.spans)
@@ -59,24 +61,27 @@ class AnswerSynthesisService:
             "finding_refs": [f"F{i + 1}" for i in item.finding_indexes],
             "evidence_refs": [evidence_refs[c] for c in item.supporting_chunk_ids],
         } for ref, item in paragraphs.items()]
-        try:
-            proposal = await self._audit_llm.invoke_structured([
+        messages = [
                 SystemMessage(content=self._audit_prompt.build()),
                 HumanMessage(content=json.dumps(payload, ensure_ascii=False)),
-            ], AnswerAuditProposal)
+        ]
+        if validation_feedback:
+            messages.append(HumanMessage(content=json.dumps({
+                "validation_feedback": validation_feedback,
+            })))
+        try:
+            proposal = await self._audit_llm.invoke_structured(
+                messages, AnswerAuditProposal,
+            )
             rated = {item.paragraph_ref: item for item in proposal.paragraph_support}
             if tuple(rated) != tuple(paragraphs):
-                raise ValueError("Audit must rate every paragraph exactly once and in order")
-            evidence = {evidence_refs[item.chunk_id]: item for item in request.evidence}
+                raise ValueError(
+                    "Audit must rate exactly these paragraph references in order: "
+                    + ", ".join(paragraphs)
+                )
             return AnswerAudit(
                 paragraph_support={
                     paragraphs[ref].paragraph_id: min(item.support, item.scope)
-                    for ref, item in rated.items()
-                },
-                paragraph_quotes={
-                    paragraphs[ref].paragraph_id: self._verified_quotes(
-                        item, paragraphs[ref], evidence,
-                    )
                     for ref, item in rated.items()
                 },
                 answer_quality=proposal.answer_quality,
@@ -174,27 +179,6 @@ class AnswerSynthesisService:
                 ),
             }))]
         raise AssertionError("unreachable")
-
-    @staticmethod
-    def _verified_quotes(proposal, paragraph, evidence) -> dict:
-        verified: dict = {}
-        for quote in proposal.quotes:
-            candidate = evidence.get(quote.evidence_ref)
-            passage = WHITESPACE.sub(" ", candidate.text) if candidate else ""
-            span = WHITESPACE.sub(" ", quote.text).strip()
-            if (
-                candidate is None
-                or candidate.chunk_id not in paragraph.supporting_chunk_ids
-                or candidate.chunk_id in verified
-                or span not in passage
-            ):
-                LOGGER.warning(
-                    "Answer auditor returned an unverifiable quotation",
-                    extra={"event": "answer.audit.quote_rejected"},
-                )
-                continue
-            verified[candidate.chunk_id] = span
-        return verified
 
     @staticmethod
     def _raise_model_error(exc: LLMError, stage: str) -> None:
