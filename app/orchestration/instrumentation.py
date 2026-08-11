@@ -15,6 +15,16 @@ StateT = TypeVar("StateT")
 AgentNode = Callable[[StateT], Awaitable[dict[str, object]]]
 
 
+def preserve_state(node: AgentNode[StateT]) -> AgentNode[StateT]:
+    async def observed(state: StateT) -> dict[str, object]:
+        try:
+            return await node(state)
+        except Exception as exc:
+            setattr(exc, "workflow_state", dict(state))
+            raise
+    return observed
+
+
 def instrument_node(
     *,
     phase: AgentRole,
@@ -45,7 +55,7 @@ def instrument_node(
         _log_phase(event.phase, event.status, event.sequence, duration_ms)
         return update
 
-    return observed
+    return preserve_state(observed)
 
 
 def log_route(

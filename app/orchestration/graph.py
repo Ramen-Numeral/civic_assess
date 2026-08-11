@@ -6,7 +6,12 @@ from app.features.input_validation.service import InputValidationService
 from app.features.query_reframe.service import QueryReframeService
 from app.features.query_resolution.service import QueryResolutionService
 from app.observability.progress import ProgressEmitter
-from app.orchestration.instrumentation import AgentNode, instrument_node, log_route
+from app.orchestration.instrumentation import (
+    AgentNode,
+    instrument_node,
+    log_route,
+    preserve_state,
+)
 from app.orchestration.nodes import (
     build_input_preflight_node,
     build_input_validation_node,
@@ -63,11 +68,11 @@ def build_chat_graph(
     )
     routes = {"query_reframe": "query_reframe", "end": END}
     if research is not None:
-        graph.add_node("research", build_research_node(research))
+        graph.add_node("research", preserve_state(build_research_node(research)))
         if answers is None:
             graph.add_edge("research", END)
         else:
-            graph.add_node("answer", build_answer_node(answers))
+            graph.add_node("answer", preserve_state(build_answer_node(answers)))
             graph.add_edge("research", "answer")
             graph.add_edge("answer", END)
         routes["research"] = "research"

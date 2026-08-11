@@ -265,7 +265,7 @@ class QueryDiversificationService:
             self._validate_proposal(original_query, queries, minimum, allowed_text)
         except ValueError as exc:
             raise InvalidQueryDiversificationError(
-                "Diversifier output violated query invariants"
+                f"Diversifier output violated query invariants: {exc}"
             ) from exc
 
     @staticmethod

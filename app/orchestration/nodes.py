@@ -13,7 +13,10 @@ from app.features.query_reframe.service import (
     QueryReframeService,
     determine_reframe_mode,
 )
-from app.features.query_resolution.schemas import QueryResolutionRequest
+from app.features.query_resolution.schemas import (
+    QueryResolutionRequest,
+    QueryResolutionResult,
+)
 from app.features.query_resolution.service import QueryResolutionService
 from app.orchestration.instrumentation import AgentNode, log_route
 from app.orchestration.answer import AnswerCoordinator
@@ -87,10 +90,15 @@ def build_query_resolution_node(
     service: QueryResolutionService,
 ) -> AgentNode[ChatState]:
     async def resolve_query(state: ChatState) -> dict[str, object]:
+        context = state["conversation_context"]
+        if not context.recent_turns and context.state is None:
+            return {"query_resolution": QueryResolutionResult(
+                resolved_query=state["normalized_request"],
+            )}
         result = await service.resolve(
             QueryResolutionRequest(
                 normalized_query=state["normalized_request"],
-                context=state["conversation_context"],
+                context=context,
             )
         )
         if result.clarification_question is not None:
@@ -121,12 +129,11 @@ def build_research_node(
 def build_answer_node(coordinator: AnswerCoordinator) -> AgentNode[ChatState]:
     async def answer(state: ChatState) -> dict[str, object]:
         research = state["research_result"]
-        selected = research.selected_round
         result = await coordinator.answer(GroundedAnswerRequest(
             canonical_query=state["gate_result"].normalized_query,
             requirements=research.plan.requirements,
-            coverage=selected.coverage,
-            evidence=selected.coverage_view,
+            coverage=research.cumulative_coverage,
+            evidence=research.cumulative_evidence,
         ))
         return {"answer_result": result}
 

@@ -61,6 +61,8 @@ class ResearchResult(BaseModel):
     plan: ResearchPlan
     rounds: tuple[ResearchRound, ...] = Field(min_length=1)
     selected_round: ResearchRound
+    cumulative_coverage: EvidenceCoverageAssessment
+    cumulative_evidence: tuple[EvidenceCandidate, ...]
 
     @model_validator(mode="after")
     def require_selected_completed_round(self) -> "ResearchResult":
@@ -70,6 +72,11 @@ class ResearchResult(BaseModel):
             range(len(self.rounds))
         ):
             raise ValueError("Research rounds must be contiguous from zero")
+        available = {item.chunk_id for item in self.cumulative_evidence}
+        if any(chunk_id not in available
+               for finding in self.cumulative_coverage.findings
+               for chunk_id in finding.supporting_chunk_ids):
+            raise ValueError("Cumulative findings must cite cumulative evidence")
         return self
 
 
@@ -113,29 +120,22 @@ class ResearchCoordinator:
             conversation_id, plan, query_set, None, round_number=0,
         )
         rounds = [first]
+        cumulative = first.coverage
         acquisition_service = self._acquisition
         ingestion_service = self._ingestion
         if acquisition_service is None or ingestion_service is None:
-            return ResearchResult(
-                plan=plan,
-                rounds=tuple(rounds),
-                selected_round=first,
-            )
+            return _result(plan, rounds, cumulative)
         for round_number in range(1, self._max_rounds + 1):
-            if rounds[-1].coverage.sufficient:
-                return ResearchResult(
-                    plan=plan,
-                    rounds=tuple(rounds),
-                    selected_round=rounds[-1],
-                )
+            if cumulative.sufficient:
+                return _result(plan, rounds, cumulative)
             if round_number == 1:
-                query_set = _planned_gap_queries(plan, rounds[-1].coverage.gaps)
+                query_set = _planned_gap_queries(plan, cumulative.gaps)
             else:
                 query_set = await self._planner.plan_for_gaps(
                     GapDirectedQueryPlanningRequest(
                         original_query=plan.query_set.original_query,
                         requirements=plan.requirements,
-                        gaps=rounds[-1].coverage.gaps,
+                        gaps=cumulative.gaps,
                     )
                 )
             acquisition = await acquisition_service.acquire(query_set)
@@ -171,17 +171,11 @@ class ResearchCoordinator:
                 query_set,
                 rounds[-1],
                 round_number=round_number,
+                gaps=cumulative.gaps,
             )
             rounds.append(completed)
-        if rounds[-1].coverage.sufficient:
-            selected = rounds[-1]
-        else:
-            selected = max(rounds, key=_round_quality)
-        return ResearchResult(
-            plan=plan,
-            rounds=tuple(rounds),
-            selected_round=selected,
-        )
+            cumulative = _merge_coverage(cumulative, completed.coverage)
+        return _result(plan, rounds, cumulative)
 
     async def _assess(
         self,
@@ -191,6 +185,7 @@ class ResearchCoordinator:
         previous_round: ResearchRound | None,
         *,
         round_number: int,
+        gaps: tuple[EvidenceGap, ...] | None = None,
     ) -> ResearchRound:
         retrieval = await self._retrieval.retrieve(
             conversation_id=conversation_id,
@@ -205,7 +200,13 @@ class ResearchCoordinator:
         )
         request = EvidenceCoverageRequest(
             canonical_query=plan.query_set.original_query.text,
-            requirements=plan.requirements,
+            requirements=tuple(
+                requirement for requirement in plan.requirements
+                if gaps is None or any(
+                    gap.requirement_id == requirement.requirement_id
+                    for gap in gaps
+                )
+            ),
             evidence_view=view,
         )
         coverage = await self._coverage.assess(request)
@@ -289,4 +290,32 @@ def _round_quality(round_: ResearchRound) -> tuple[bool, int, int, int]:
         -len(round_.coverage.gaps),
         len(cited),
         round_.round_number,
+    )
+
+
+def _merge_coverage(
+    cumulative: EvidenceCoverageAssessment,
+    current: EvidenceCoverageAssessment,
+) -> EvidenceCoverageAssessment:
+    unresolved = {gap.requirement_id for gap in cumulative.gaps}
+    return EvidenceCoverageAssessment(
+        findings=tuple(
+            finding for finding in cumulative.findings
+            if finding.requirement_id not in unresolved
+        ) + current.findings,
+        gaps=current.gaps,
+    )
+
+
+def _result(plan, rounds, coverage) -> ResearchResult:
+    selected = rounds[-1] if coverage.sufficient else max(rounds, key=_round_quality)
+    evidence = {item.chunk_id: item for item in rounds[-1].evidence_frontier}
+    cited = dict.fromkeys(
+        chunk_id for finding in coverage.findings
+        for chunk_id in finding.supporting_chunk_ids
+    )
+    return ResearchResult(
+        plan=plan, rounds=tuple(rounds), selected_round=selected,
+        cumulative_coverage=coverage,
+        cumulative_evidence=tuple(evidence[chunk_id] for chunk_id in cited),
     )
