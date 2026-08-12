@@ -163,5 +163,4 @@ Full results are available in
 
 ## Demonstration
 
-- Live Gradio demo: _add before submission_
-- Five-scenario Loom walkthrough: _add before submission_
+- [Five-scenario Loom walkthrough](https://www.loom.com/share/e2b65bb9e413412dbedfd9c5f59bcd08)

@@ -43,10 +43,10 @@ def build_input_validation_node(
         query = (
             proposal.proposed_query
             if proposal is not None
-            else state["query_resolution"].resolved_query
+            else (
+                state["query_resolution"].resolved_query or state["normalized_request"]
+            )
         )
-        if query is None:
-            raise RuntimeError("Input validation requires a resolved query")
         original_query = query if proposal is not None else state["normalized_request"]
         try:
             result = await service.validate(
@@ -63,7 +63,21 @@ def build_input_validation_node(
             return {"chat_route": route}
 
         if proposal is None:
-            return {"gate_result": result}
+            update: dict[str, object] = {"gate_result": result}
+            if (
+                state["query_resolution"].clarification_question is not None
+                and result.disposition is Disposition.ALLOW
+            ):
+                route = ChatRoute.AWAIT_CLARIFICATION
+                log_route(
+                    route,
+                    "validated_context_ambiguity",
+                    validation_disposition=result.disposition,
+                    validation_stage="original",
+                    validation_analysis=result.analysis,
+                )
+                update["chat_route"] = route
+            return update
         if result.disposition is Disposition.REFRAME and not repairing:
             log_route(
                 "query_reframe",
@@ -123,13 +137,6 @@ def build_query_resolution_node(
                 context=context,
             )
         )
-        if result.clarification_question is not None:
-            route = ChatRoute.AWAIT_CLARIFICATION
-            log_route(route, "context_ambiguous")
-            return {
-                "query_resolution": result,
-                "chat_route": route,
-            }
         return {"query_resolution": result}
 
     return resolve_query

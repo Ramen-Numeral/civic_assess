@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.application.workflow_response import REDIRECT_MESSAGE, workflow_response
 from app.domain.conversation import (
     ConversationContext,
     ConversationContextStatus,
@@ -164,3 +165,47 @@ def test_resolved_follow_up_preserves_original_for_safety_validation() -> None:
     assert requests[0].original_query == original
     assert requests[0].resolved_query == resolved
     assert state["chat_route"] is ChatRoute.AWAIT_APPROVAL
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ("disposition", "expected_route", "expected_response"),
+    [
+        (Disposition.ALLOW, ChatRoute.AWAIT_CLARIFICATION, "Which policy do you mean?"),
+        (Disposition.REDIRECT, None, REDIRECT_MESSAGE),
+    ],
+)
+def test_resolver_clarification_cannot_bypass_validation(
+    disposition, expected_route, expected_response
+) -> None:
+    class ClarifyingResolver:
+        async def resolve(self, request):
+            return QueryResolutionResult(
+                clarification_question="Which policy do you mean?"
+            )
+
+    context = ConversationContext(
+        conversation_id=uuid4(),
+        current_turn_id=uuid4(),
+        recent_turns=(
+            ConversationTurn(
+                turn_id=uuid4(),
+                role=ConversationRole.ASSISTANT,
+                content="Earlier context.",
+            ),
+        ),
+        status=ConversationContextStatus.RECENT_ONLY,
+    )
+    state = asyncio.run(
+        ChatOrchestrator(
+            Validator(gate(disposition)),
+            Reframer(),
+            ClarifyingResolver(),
+        ).invoke(
+            InputValidationRequest(original_query="Can you help with this?"),
+            conversation_context=context,
+        )
+    )
+
+    assert state.get("chat_route") is expected_route
+    assert workflow_response(state) == expected_response

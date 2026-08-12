@@ -60,11 +60,7 @@ def build_chat_graph(
     )
     graph.add_edge(START, "input_preflight")
     graph.add_edge("input_preflight", "query_resolution")
-    graph.add_conditional_edges(
-        "query_resolution",
-        _route_after_query_resolution,
-        {"validate": "input_validation", "end": END},
-    )
+    graph.add_edge("query_resolution", "input_validation")
     routes = {"query_reframe": "query_reframe", "end": END}
     if research is not None:
         _add_observed_node(
@@ -146,10 +142,6 @@ def _route_after_input_validation(
         validation_analysis=state["gate_result"].analysis,
     )
     return route
-
-
-def _route_after_query_resolution(state: ChatState) -> str:
-    return "end" if "chat_route" in state else "validate"
 
 
 def _route_after_query_reframe(state: ChatState) -> str:
