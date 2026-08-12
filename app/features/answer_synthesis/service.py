@@ -16,14 +16,11 @@ from app.prompts.base import Prompt
 
 
 LOGGER = logging.getLogger(__name__)
-REF_TOKEN = re.compile(r"[FEP][1-9]\d*")
 BRACKETED_REF_RUN = re.compile(
-    r"\[+\s*[FEP][1-9]\d*(?:\s*[\],/]+\s*\[*\s*[FEP][1-9]\d*)*\s*\]+"
+    r"\[+\s*[FEP]?\s*[1-9]\d*(?:\s*[\],/]+\s*\[*\s*[FEP]?\s*[1-9]\d*)*\s*\]+",
+    re.I,
 )
 PARENTHETICAL_REF = re.compile(r"\s*\((?:[FEP][1-9]\d*(?:\s*[/,]\s*)?)+\)")
-INLINE_EVIDENCE_REF = re.compile(r"\[\[E([1-9]\d*)\]\]")
-INLINE_FINDING_REF = re.compile(r"\[\[F([1-9]\d*)\]\]")
-UNRESOLVED_MARKER = re.compile(r"\s*\[\[[FP][1-9]\d*\]\]")
 
 
 class AnswerSynthesisService:
@@ -115,33 +112,19 @@ class AnswerSynthesisService:
                 )
                 texts = []
                 for item in proposal.paragraphs:
-                    normalized = BRACKETED_REF_RUN.sub(_canonical_refs, item.text)
-                    if normalized != item.text:
-                        LOGGER.warning(
-                            "Answer writer emitted malformed citation syntax",
-                            extra={"event": "answer.writer.marker_normalized"},
-                        )
-                    cited_findings = {f"F{x}" for x in INLINE_FINDING_REF.findall(normalized)}
-                    if not cited_findings <= set(item.finding_refs):
-                        raise ValueError("Paragraph cited an undeclared finding")
-                    text = INLINE_FINDING_REF.sub(lambda match: " ".join(
-                        f"[[{evidence_refs[chunk]}]]" for chunk in request.findings[
-                            findings[f"F{match.group(1)}"]
-                        ].supporting_chunk_ids
-                    ), normalized)
-                    allowed = {
+                    text = PARENTHETICAL_REF.sub(
+                        "", BRACKETED_REF_RUN.sub("", item.text),
+                    ).strip()
+                    text = re.sub(r"\s+([,.;:!?])", r"\1", " ".join(text.split()))
+                    allowed = tuple(dict.fromkeys(
                         evidence_refs[chunk] for ref in item.finding_refs
                         for chunk in request.findings[findings[ref]].supporting_chunk_ids
-                    }
-                    if not {f"E{x}" for x in INLINE_EVIDENCE_REF.findall(text)} <= allowed:
-                        raise ValueError("Paragraph used evidence outside its findings")
-                    texts.append(text)
+                    ))
+                    texts.append(f"{text} {' '.join(f'[[{ref}]]' for ref in allowed)}")
                 return NaturalAnswerDraft(paragraphs=tuple(
                     AnswerParagraph(
                         paragraph_id=uuid4(),
-                        text=UNRESOLVED_MARKER.sub(
-                            "", PARENTHETICAL_REF.sub("", text),
-                        ).strip(),
+                        text=text.strip(),
                         finding_indexes=tuple(findings[ref] for ref in item.finding_refs),
                         supporting_chunk_ids=tuple(dict.fromkeys(
                             chunk for ref in item.finding_refs
@@ -163,19 +146,24 @@ class AnswerSynthesisService:
             if attempt:
                 LOGGER.error(
                     "Answer writer contract repair exhausted",
-                    extra={"event": "answer.writer.contract_repair_exhausted"},
+                    extra={"event": "answer.writer.contract_repair_exhausted",
+                           "error_type": type(failure).__name__,
+                           "error_message": str(failure)},
                 )
                 raise InvalidAnswerProposalError(
                     "Answer output violated finding grounding"
                 ) from failure
             LOGGER.warning(
                 "Answer writer contract failed; repairing once",
-                extra={"event": "answer.writer.contract_repair"},
+                extra={"event": "answer.writer.contract_repair",
+                       "error_type": type(failure).__name__,
+                       "error_message": str(failure)},
             )
             messages = [*messages, HumanMessage(content=json.dumps({
-                "validation_feedback": (
-                    "The prior response violated the output contract. Return valid "
-                    "structured paragraphs using only the supplied F references."
+                    "validation_feedback": (
+                        "The prior response violated the output contract. Return valid "
+                        "finding_refs using only supplied F references, with no "
+                        "citation markers in paragraph text."
                 ),
             }))]
         raise AssertionError("unreachable")
@@ -188,10 +176,6 @@ class AnswerSynthesisService:
             "answer_writer_unavailable", "I couldn't prepare a grounded answer right now.",
             retryable=True,
         ) from exc
-
-
-def _canonical_refs(match: re.Match[str]) -> str:
-    return " ".join(f"[[{item}]]" for item in REF_TOKEN.findall(match.group()))
 
 
 def _strip_refs(value: str) -> str:
