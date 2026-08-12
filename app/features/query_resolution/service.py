@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from collections.abc import Sequence
 
@@ -27,6 +28,11 @@ from app.prompts.base import Prompt
 
 NUMBER = re.compile(r"(?<!\w)\$?\d[\d,.]*(?:%|st|nd|rd|th)?(?!\w)")
 URL_OR_MARKDOWN_LINK = re.compile(r"https?://|www\.|\[[^\]]+\]\([^)]+\)", re.I)
+LOGGER = logging.getLogger(__name__)
+RESOLUTION_REPAIR_ATTEMPTS = 2
+CLARIFICATION_FALLBACK = (
+    "Could you restate your question with the person, policy, event, or claim you mean?"
+)
 
 
 class QueryResolutionService:
@@ -73,34 +79,71 @@ class QueryResolutionService:
                 )
             ),
         ]
-        try:
-            result = await self._llm.invoke_structured(
-                messages,
-                QueryResolutionResult,
-            )
+        for attempt in range(RESOLUTION_REPAIR_ATTEMPTS):
+            try:
+                result = await self._llm.invoke_structured(
+                    messages,
+                    QueryResolutionResult,
+                )
+            except LLMError as exc:
+                if exc.failures and all(
+                    failure.kind is FailureKind.INVALID_OUTPUT
+                    for failure in exc.failures
+                ):
+                    raise InvalidQueryResolutionError(
+                        "Resolver returned invalid structured output"
+                    ) from exc
+                raise self._unavailable() from exc
+
             if result.resolved_query == request.normalized_query:
                 result = result.model_copy(update={"context_evidence": ()})
-            self._validate_result(
-                request.normalized_query,
-                turns,
-                request.context.state,
-                state_evidence_text,
-                result,
+            LOGGER.info(
+                "Query resolution candidate produced",
+                extra={
+                    "event": "query_resolution.candidate",
+                    "attempt": attempt + 1,
+                    "input_query": request.normalized_query,
+                    "resolved_query": result.resolved_query,
+                    "clarification_question": result.clarification_question,
+                    "context_evidence_count": len(result.context_evidence),
+                },
             )
-        except LLMError as exc:
-            if exc.failures and all(
-                failure.kind is FailureKind.INVALID_OUTPUT
-                for failure in exc.failures
-            ):
-                raise InvalidQueryResolutionError(
-                    "Resolver returned invalid structured output"
-                ) from exc
-            raise self._unavailable() from exc
-        except ValueError as exc:
-            raise InvalidQueryResolutionError(
-                "Resolver output violated resolution invariants"
-            ) from exc
-        return result
+            try:
+                self._validate_result(
+                    request.normalized_query,
+                    turns,
+                    request.context.state,
+                    state_evidence_text,
+                    result,
+                )
+            except ValueError as exc:
+                if attempt + 1 == RESOLUTION_REPAIR_ATTEMPTS:
+                    LOGGER.warning(
+                        "Query resolution degraded to clarification",
+                        extra={
+                            "event": "query_resolution.clarification_fallback",
+                            "invariant": str(exc),
+                        },
+                    )
+                    return QueryResolutionResult(
+                        clarification_question=CLARIFICATION_FALLBACK,
+                    )
+                LOGGER.warning(
+                    "Query resolution failed validation; retrying",
+                    extra={
+                        "event": "query_resolution.contract_repair",
+                        "invariant": str(exc),
+                    },
+                )
+                messages.append(SystemMessage(content=(
+                    "Your previous response violated this output invariant: "
+                    f"{exc}. Return a corrected result using only the supplied "
+                    "query and context. Evidence references must use the supplied "
+                    "source IDs."
+                )))
+                continue
+            return result
+        raise AssertionError("Query resolution attempts exhausted")
 
     @staticmethod
     def _bounded_turns(
@@ -137,18 +180,18 @@ class QueryResolutionService:
         for evidence in result.context_evidence:
             if evidence.source_kind is ContextSourceKind.RAW_TURN:
                 source = turns_by_id.get(evidence.source_id)
-                valid = source is not None and evidence.excerpt in source.content
+                valid = source is not None
+                if source is not None:
+                    evidence_text.append(source.content)
             else:
                 valid = (
                     state is not None
                     and evidence.source_id == state.state_id
-                    and any(
-                        evidence.excerpt in text for text in state_evidence_text
-                    )
                 )
+                if valid:
+                    evidence_text.extend(state_evidence_text)
             if not valid:
-                raise ValueError("Resolution evidence is not in supplied context")
-            evidence_text.append(evidence.excerpt)
+                raise ValueError("Resolution source ID is not in supplied context")
 
         if result.resolved_query is not None:
             changed = result.resolved_query != normalized_query

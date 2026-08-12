@@ -45,7 +45,7 @@ class ChatOrchestrator:
         async with self._emitter.run():
             return await self._graph.ainvoke(
                 {
-                    "original_request": request.query,
+                    "original_request": request.original_query,
                     "conversation_context": conversation_context,
                     "approved_reframe": approved_reframe,
                 }

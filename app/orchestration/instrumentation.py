@@ -3,7 +3,7 @@ from collections.abc import Awaitable, Callable
 from time import perf_counter
 from typing import TypeVar
 
-from app.domain.validation import Disposition
+from app.domain.validation import Disposition, InputGateAnalysis
 from app.features.query_reframe.schemas import QueryReframeMode
 from app.observability.progress import ProgressEmitter, ProgressStatus
 from app.orchestration.state import ChatRoute
@@ -64,6 +64,8 @@ def log_route(
     *,
     mode: QueryReframeMode | None = None,
     validation_disposition: Disposition | None = None,
+    validation_stage: str | None = None,
+    validation_analysis: InputGateAnalysis | None = None,
 ) -> None:
     LOGGER.info(
         "Chat workflow routed",
@@ -76,6 +78,17 @@ def log_route(
                 validation_disposition.value
                 if validation_disposition is not None
                 else None
+            ),
+            "validation_stage": validation_stage,
+            "scope": (
+                validation_analysis.scope.value if validation_analysis else None
+            ),
+            "behavior": (
+                validation_analysis.behavior.value if validation_analysis else None
+            ),
+            "instruction_integrity": (
+                validation_analysis.instruction_integrity.value
+                if validation_analysis else None
             ),
         },
     )

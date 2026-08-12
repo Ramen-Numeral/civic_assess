@@ -121,7 +121,9 @@ def _route_after_input_validation(
     *,
     research_enabled: bool,
 ) -> str:
-    if "proposal_gate_result" in state or "chat_route" in state:
+    if "proposal_gate_result" in state and "chat_route" not in state:
+        return "query_reframe"
+    if "chat_route" in state:
         return "end"
     disposition = state["gate_result"].disposition
     reasons = {
@@ -140,6 +142,8 @@ def _route_after_input_validation(
         route,
         "research_available" if route == "research" else reasons[disposition],
         validation_disposition=disposition,
+        validation_stage="original",
+        validation_analysis=state["gate_result"].analysis,
     )
     return route
 

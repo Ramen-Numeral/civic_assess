@@ -48,13 +48,20 @@ class InputValidationService:
         self._prompt = prompt
 
     async def validate(self, request: InputValidationRequest) -> InputGateResult:
-        query = normalize_query(request.query, MAX_QUERY_LENGTH)
+        original_query = normalize_query(request.original_query, MAX_QUERY_LENGTH)
+        resolved_query = normalize_query(
+            request.resolved_query or original_query,
+            MAX_QUERY_LENGTH,
+        )
 
         messages = [
             SystemMessage(content=self._prompt.build()),
             HumanMessage(
                 content=json.dumps(
-                    {"normalized_query": query},
+                    {
+                        "original_query": original_query,
+                        "resolved_query": resolved_query,
+                    },
                     ensure_ascii=False,
                 )
             ),
@@ -72,5 +79,5 @@ class InputValidationService:
         return InputGateResult(
             analysis=analysis,
             disposition=determine_disposition(analysis),
-            normalized_query=query,
+            normalized_query=resolved_query,
         )

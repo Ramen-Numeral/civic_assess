@@ -22,6 +22,7 @@ class QueryReframeProposal(BaseModel):
 class QueryReframeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    normalized_query: NonBlankText
+    original_query: NonBlankText
+    resolved_query: NonBlankText
     analysis: InputGateAnalysis
     mode: QueryReframeMode

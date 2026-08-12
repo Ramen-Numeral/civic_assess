@@ -27,7 +27,7 @@ from app.orchestration.state import ChatRoute, ChatState
 def build_input_preflight_node() -> AgentNode[ChatState]:
     async def preflight(state: ChatState) -> dict[str, object]:
         normalized = preflight_input(
-            InputValidationRequest(query=state["original_request"])
+            InputValidationRequest(original_query=state["original_request"])
         )
         return {"normalized_request": normalized}
 
@@ -38,6 +38,7 @@ def build_input_validation_node(
     service: InputValidationService,
 ) -> AgentNode[ChatState]:
     async def validate_input(state: ChatState) -> dict[str, object]:
+        repairing = "proposal_gate_result" in state
         proposal = state.get("query_reframe_proposal")
         query = (
             proposal.proposed_query
@@ -46,8 +47,14 @@ def build_input_validation_node(
         )
         if query is None:
             raise RuntimeError("Input validation requires a resolved query")
+        original_query = (
+            query if proposal is not None else state["normalized_request"]
+        )
         try:
-            result = await service.validate(InputValidationRequest(query=query))
+            result = await service.validate(InputValidationRequest(
+                original_query=original_query,
+                resolved_query=query,
+            ))
         except InputValidationError as exc:
             if proposal is None or exc.retryable:
                 raise
@@ -57,6 +64,14 @@ def build_input_validation_node(
 
         if proposal is None:
             return {"gate_result": result}
+        if result.disposition is Disposition.REFRAME and not repairing:
+            log_route(
+                "query_reframe", "proposal_requires_repair",
+                validation_disposition=result.disposition,
+                validation_stage="proposal",
+                validation_analysis=result.analysis,
+            )
+            return {"proposal_gate_result": result}
 
         original = state["gate_result"].normalized_query
         approved = (
@@ -72,6 +87,8 @@ def build_input_validation_node(
             route,
             "proposal_allowed" if approved else "proposal_rejected",
             validation_disposition=result.disposition,
+            validation_stage="proposal",
+            validation_analysis=result.analysis,
         )
         update: dict[str, object] = {
             "proposal_gate_result": result,
@@ -160,12 +177,17 @@ def build_query_reframe_node(
     service: QueryReframeService,
 ) -> AgentNode[ChatState]:
     async def reframe_query(state: ChatState) -> dict[str, object]:
-        gate_result = state["gate_result"]
+        repairing = "proposal_gate_result" in state
+        gate_result = state.get("proposal_gate_result") or state["gate_result"]
+        prior = state.get("query_reframe_proposal")
+        original = prior.proposed_query if repairing and prior else state["normalized_request"]
+        resolved = original if repairing else state["gate_result"].normalized_query
         mode = determine_reframe_mode(gate_result.analysis)
         try:
             proposal = await service.reframe(
                 QueryReframeRequest(
-                    normalized_query=gate_result.normalized_query,
+                    original_query=original,
+                    resolved_query=resolved,
                     analysis=gate_result.analysis,
                     mode=mode,
                 )

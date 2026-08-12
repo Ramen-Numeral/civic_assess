@@ -1,4 +1,5 @@
 import json
+import logging
 from collections.abc import Mapping
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -20,6 +21,9 @@ from app.features.query_reframe.schemas import (
 from app.infrastructure.llm.client import LLMClient
 from app.infrastructure.llm.errors import FailureKind, LLMError
 from app.prompts.base import Prompt
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 def determine_reframe_mode(analysis: InputGateAnalysis) -> QueryReframeMode:
@@ -54,7 +58,8 @@ class QueryReframeService:
             HumanMessage(
                 content=json.dumps(
                     {
-                        "normalized_query": request.normalized_query,
+                        "original_query": request.original_query,
+                        "resolved_query": request.resolved_query,
                         "gate_analysis": request.analysis.model_dump(
                             mode="json"
                         ),
@@ -65,10 +70,21 @@ class QueryReframeService:
         ]
 
         try:
-            return await self._llm.invoke_structured(
+            proposal = await self._llm.invoke_structured(
                 messages,
                 QueryReframeProposal,
             )
+            LOGGER.info(
+                "Query reframe proposal produced",
+                extra={
+                    "event": "query_reframe.proposal",
+                    "mode": request.mode.value,
+                    "original_query": request.original_query,
+                    "resolved_query": request.resolved_query,
+                    "proposed_query": proposal.proposed_query,
+                },
+            )
+            return proposal
         except LLMError as exc:
             if exc.failures and all(
                 failure.kind is FailureKind.INVALID_OUTPUT

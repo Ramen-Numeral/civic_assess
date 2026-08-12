@@ -134,7 +134,7 @@ class ChatInteractionService:
                         "current_turn_id": user_turn.turn_id,
                     })
                     state = await self._orchestrator.invoke(
-                        InputValidationRequest(query=pending_reframe),
+                        InputValidationRequest(original_query=pending_reframe),
                         conversation_context=context,
                         approved_reframe=True,
                     )
@@ -146,7 +146,7 @@ class ChatInteractionService:
                     )
                 else:
                     state = await self._orchestrator.invoke(
-                        InputValidationRequest(query=user_turn.content),
+                        InputValidationRequest(original_query=user_turn.content),
                         conversation_context=context,
                     )
             except Exception:

@@ -84,6 +84,9 @@ def build_ui(
     application: Application,
     reporter: SessionProgressReporter,
 ) -> gr.Blocks:
+    def capture_message(value: str) -> tuple[str, str]:
+        return value, ""
+
     async def respond(
         message: str,
         history: list[ChatMessage] | None,
@@ -158,6 +161,7 @@ def build_ui(
 
     with gr.Blocks(fill_height=True, title="Civic Assess") as interface:
         conversation_state = gr.State(value=None)
+        submitted_message = gr.State(value="")
 
         with gr.Sidebar(
             label="Process Trace",
@@ -174,7 +178,7 @@ def build_ui(
             placeholder="What would you like to know?",
             show_label=False,
             layout="bubble",
-            buttons=["copy"],
+            buttons=[],
             feedback_options=[],
             elem_id="chat-panel",
         )
@@ -189,16 +193,30 @@ def build_ui(
             )
             submit = gr.Button("Submit", variant="primary", scale=1)
 
-        inputs = [message, chatbot, conversation_state]
+        inputs = [submitted_message, chatbot, conversation_state]
         outputs = [chatbot, conversation_state, trace]
-        message.submit(
+        message_submit = message.submit(
+            capture_message,
+            message,
+            [submitted_message, message],
+            queue=False,
+            show_progress="hidden",
+        )
+        message_submit.then(
             respond,
             inputs,
             outputs,
             show_progress="minimal",
             concurrency_limit=None,
         )
-        submit.click(
+        button_submit = submit.click(
+            capture_message,
+            message,
+            [submitted_message, message],
+            queue=False,
+            show_progress="hidden",
+        )
+        button_submit.then(
             respond,
             inputs,
             outputs,

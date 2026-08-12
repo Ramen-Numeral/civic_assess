@@ -1,5 +1,4 @@
 from enum import StrEnum
-from typing import Annotated
 from uuid import UUID
 
 from pydantic import (
@@ -7,7 +6,6 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    StringConstraints,
     model_validator,
 )
 
@@ -30,12 +28,6 @@ class ConversationContextStatus(StrEnum):
 class ContextSourceKind(StrEnum):
     RAW_TURN = "raw_turn"
     SUMMARY_STATE = "summary_state"
-
-
-ContextExcerpt = Annotated[
-    str,
-    StringConstraints(strip_whitespace=True, min_length=1, max_length=500),
-]
 
 
 class ConversationTurn(BaseModel):
@@ -127,4 +119,3 @@ class ContextEvidenceReference(BaseModel):
 
     source_kind: ContextSourceKind
     source_id: UUID
-    excerpt: ContextExcerpt

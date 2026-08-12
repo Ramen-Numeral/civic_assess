@@ -7,4 +7,5 @@ class InputValidationRequest(BaseModel):
         frozen=True,
     )
 
-    query: str
+    original_query: str
+    resolved_query: str | None = None
