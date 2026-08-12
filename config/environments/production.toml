@@ -1,0 +1,61 @@
+# Hugging Face deployment routes. Secrets are supplied as Space environment
+# variables. Repeated role blocks are attempted from top to bottom.
+
+[api_keys]
+openai = "OPENAI_API_KEY"
+
+[[routes.validator]]
+provider = "openai"
+model = "gpt-4.1-mini"
+temperature = 0.0
+timeout_seconds = 30
+max_retries = 2
+
+[[routes.query_resolver]]
+provider = "openai"
+model = "gpt-4.1-mini"
+temperature = 0.0
+timeout_seconds = 30
+max_retries = 2
+
+[[routes.query_diversifier]]
+provider = "openai"
+model = "gpt-4.1-mini"
+temperature = 0.0
+timeout_seconds = 30
+max_retries = 2
+
+[[routes.evidence_coverage]]
+provider = "openai"
+model = "gpt-4.1-mini"
+temperature = 0.0
+timeout_seconds = 30
+max_retries = 2
+
+[[routes.answer_writer]]
+provider = "openai"
+model = "gpt-4.1-mini"
+temperature = 0.0
+timeout_seconds = 30
+max_retries = 2
+
+[[routes.answer_auditor]]
+provider = "openai"
+model = "gpt-4.1-mini"
+temperature = 0.0
+timeout_seconds = 30
+max_retries = 2
+
+[[routes.conversation_summarizer]]
+provider = "openai"
+model = "gpt-4.1-mini"
+temperature = 0.0
+timeout_seconds = 30
+max_retries = 2
+
+[[routes.rewriter]]
+provider = "openai"
+model = "gpt-4.1-mini"
+temperature = 0.0
+timeout_seconds = 30
+max_retries = 2

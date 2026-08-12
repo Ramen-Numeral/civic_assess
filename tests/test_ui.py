@@ -44,6 +44,7 @@ def test_ui_builds_chat_and_trace_sidebar() -> None:
 
     assert "chat-panel" in element_ids
     assert "trace-sidebar" in element_ids
+    assert {f"scenario-{index}" for index in range(1, 7)} <= element_ids
 
 
 def test_authentication_is_explicit_and_secret_backed() -> None:

@@ -3,6 +3,7 @@ from collections.abc import AsyncIterator, Iterable, Iterator
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
+from functools import partial
 from typing import Literal, TypedDict
 from uuid import UUID, uuid4
 
@@ -89,6 +90,24 @@ WORKING_LABELS = {
 
 MASTHEAD = "# Civic Assess\n\nResearch political events and public policy."
 
+SCENARIO_PROMPTS = (
+    (
+        "Debt ceiling",
+        "What happened with the debt ceiling negotiations in 2023? What were the key positions of both parties?",
+    ),
+    (
+        "2024 primaries",
+        "What are the key issues in the 2024 presidential primary campaigns?",
+    ),
+    (
+        "Affirmative action",
+        "Explain the recent Supreme Court decision on affirmative action in college admissions.",
+    ),
+    ("Weather", "What's the weather like today?"),
+    ("Homework", "Can you help me with my homework?"),
+    ("Immigration", "What's the current debate around immigration policy?"),
+)
+
 
 def _theme() -> gr.Theme:
     return gr.themes.Soft(
@@ -113,6 +132,9 @@ def build_ui(
 
     def capture_message(value: str) -> tuple[str, str]:
         return value, ""
+
+    def load_scenario(prompt: str) -> str:
+        return prompt
 
     async def respond(
         message: str,
@@ -240,6 +262,20 @@ def build_ui(
                 interactive=True,
             )
             submit = gr.Button("Submit", variant="primary", scale=1)
+        with gr.Row(equal_height=True):
+            scenario_buttons = [
+                gr.Button(label, elem_id=f"scenario-{index}")
+                for index, (label, _) in enumerate(SCENARIO_PROMPTS, start=1)
+            ]
+
+        for button, (_, prompt) in zip(scenario_buttons, SCENARIO_PROMPTS, strict=True):
+            button.click(
+                partial(load_scenario, prompt),
+                inputs=None,
+                outputs=message,
+                queue=False,
+                show_progress="hidden",
+            )
 
         inputs = [submitted_message, chatbot, conversation_state]
         outputs = [chatbot, conversation_state, trace]
@@ -345,7 +381,7 @@ def _working_content(activity: str, pulse: int) -> str:
     return f"_{activity}{'.' * (pulse % 3 + 1)}_"
 
 
-def main() -> None:
+def create_demo() -> tuple[gr.Blocks, Settings]:
     settings = load_application_config()
     reporter = SessionProgressReporter()
     application = build_application(
@@ -353,14 +389,25 @@ def main() -> None:
         progress_reporter=reporter,
         llm_usage_reporter=reporter,
     )
-    build_ui(
+    demo = build_ui(
         application,
         reporter,
         concurrency_limit=3 if settings.require_authentication else 2,
-    ).queue(max_size=20, api_open=False).launch(
+    ).queue(max_size=20, api_open=False)
+    return demo, settings
+
+
+def launch_demo(demo: gr.Blocks, settings: Settings) -> None:
+    demo.launch(
         theme=_theme(),
         auth=_authentication(settings),
+        ssr_mode=False,
     )
+
+
+def main() -> None:
+    demo, settings = create_demo()
+    launch_demo(demo, settings)
 
 
 def _authentication(settings: Settings) -> tuple[str, str] | None:

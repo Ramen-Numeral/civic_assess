@@ -1,3 +1,11 @@
+---
+title: Civic Assess
+sdk: gradio
+sdk_version: 6.23.1
+python_version: "3.13"
+app_file: space_app.py
+---
+
 # Civic Assess
 
 This is an agentic chatbot that researches and provides cited responses to your civic questions.

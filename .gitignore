@@ -37,5 +37,6 @@ data/*.sqlite3-wal
 /app/features/*/README.md
 /config/environments/*.toml
 !/config/environments/example.toml
+!/config/environments/production.toml
 /docs/
 /scripts/
