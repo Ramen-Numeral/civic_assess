@@ -11,6 +11,7 @@ from gradio.themes.utils import fonts
 
 from app.application import ChatInteractionRequest
 from app.bootstrap.application import Application, build_application
+from app.observability.llm_usage import LLMAttemptMetrics
 from app.observability.progress import ProgressEvent
 
 
@@ -19,7 +20,8 @@ class ChatMessage(TypedDict):
     content: str
 
 
-TraceSink = asyncio.Queue[ProgressEvent]
+TraceEvent = ProgressEvent | LLMAttemptMetrics
+TraceSink = asyncio.Queue[TraceEvent]
 ACTIVE_TRACE: ContextVar[TraceSink | None] = ContextVar(
     "active_ui_trace",
     default=None,
@@ -27,7 +29,7 @@ ACTIVE_TRACE: ContextVar[TraceSink | None] = ContextVar(
 
 
 class SessionProgressReporter:
-    """Routes safe progress events to the active Gradio request only."""
+    """Routes safe progress and usage events to the active Gradio request."""
 
     @contextmanager
     def capture(self, sink: TraceSink) -> Iterator[None]:
@@ -42,12 +44,21 @@ class SessionProgressReporter:
         if sink is not None:
             sink.put_nowait(event)
 
+    def record(self, attempt: LLMAttemptMetrics) -> None:
+        sink = ACTIVE_TRACE.get()
+        if sink is not None:
+            sink.put_nowait(attempt)
+
 
 @dataclass
 class TraceStep:
     label: str
     status: str
     duration_ms: float | None = None
+    detail: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
 
 
 TRACE_LABELS = {
@@ -56,6 +67,16 @@ TRACE_LABELS = {
     "rewriter": "Reframe request",
     "query_diversifier": "Research evidence",
     "answer_writer": "Draft answer",
+}
+CALL_LABELS = {
+    "query_resolver": "Query resolver",
+    "validator": "Request validator",
+    "rewriter": "Query reframer",
+    "query_diversifier": "Research planner",
+    "evidence_coverage": "Evidence assessor",
+    "answer_writer": "Answer writer",
+    "answer_auditor": "Answer auditor",
+    "conversation_summarizer": "Conversation summarizer",
 }
 WORKING_LABELS = {
     "query_resolver": "Resolving conversation context",
@@ -106,7 +127,8 @@ def build_ui(
         activity = "Preparing request"
         pulse = 0
         current.append({"role": "assistant", "content": _working_content(activity, pulse)})
-        steps: dict[str, TraceStep] = {}
+        steps: list[TraceStep] = []
+        active_step: TraceStep | None = None
         yield list(current), conversation_id, _render_trace([])
 
         sink: TraceSink = asyncio.Queue()
@@ -131,23 +153,33 @@ def build_ui(
                             "content": _working_content(activity, pulse),
                         }
                         yield list(current), conversation_id, _render_trace(
-                            steps.values()
+                            (*steps, active_step) if active_step else steps
                         )
                         continue
-                    _record_step(steps, event)
-                    activity = WORKING_LABELS.get(event.phase.value, activity)
+                    if isinstance(event, LLMAttemptMetrics):
+                        if event.role.value == "evidence_coverage":
+                            steps.append(TraceStep("Local evidence search", "completed"))
+                        steps.append(_call_step(event))
+                    else:
+                        activity = WORKING_LABELS.get(event.phase.value, activity)
+                        active_step = _phase_step(event)
+                        if event.status.value == "completed":
+                            active_step = None
+                        elif event.status.value == "failed":
+                            steps.append(active_step)
+                            active_step = None
                     pulse += 1
                     current[-1] = {
                         "role": "assistant",
                         "content": _working_content(activity, pulse),
                     }
                     yield list(current), conversation_id, _render_trace(
-                        steps.values()
+                        (*steps, active_step) if active_step else steps
                     )
                 result = await task
             except Exception as exc:
                 current[-1] = {"role": "assistant", "content": _safe_error(exc)}
-                yield list(current), conversation_id, _render_trace(steps.values())
+                yield list(current), conversation_id, _render_trace(steps)
                 return
             finally:
                 if not task.done():
@@ -157,7 +189,7 @@ def build_ui(
 
         response = result.response_text or "No response was produced. Please try again."
         current[-1] = {"role": "assistant", "content": response}
-        yield list(current), conversation_id, _render_trace(steps.values())
+        yield list(current), conversation_id, _render_trace(steps)
 
     with gr.Blocks(fill_height=True, title="Civic Assess") as interface:
         conversation_state = gr.State(value=None)
@@ -226,24 +258,35 @@ def build_ui(
     return interface
 
 
-def _record_step(steps: dict[str, TraceStep], event: ProgressEvent) -> None:
+def _phase_step(event: ProgressEvent) -> TraceStep:
     phase = event.phase.value
-    step = steps.setdefault(
-        phase,
-        TraceStep(
-            label=TRACE_LABELS.get(phase, phase.replace("_", " ").title()),
-            status=event.status.value,
-        ),
-    )
-    step.status = event.status.value
     duration = event.details.get("duration_ms")
-    step.duration_ms = float(duration) if isinstance(duration, (int, float)) else None
+    return TraceStep(
+        label=TRACE_LABELS.get(phase, phase.replace("_", " ").title()),
+        status=event.status.value,
+        duration_ms=float(duration) if isinstance(duration, (int, float)) else None,
+    )
+
+
+def _call_step(attempt: LLMAttemptMetrics) -> TraceStep:
+    return TraceStep(
+        label=CALL_LABELS.get(
+            attempt.role.value,
+            attempt.role.value.replace("_", " ").title(),
+        ),
+        status="completed" if attempt.outcome == "success" else "failed",
+        duration_ms=attempt.duration_ms,
+        detail=f"{attempt.provider} · {attempt.model}",
+        input_tokens=attempt.input_tokens,
+        output_tokens=attempt.output_tokens,
+        total_tokens=attempt.total_tokens,
+    )
 
 
 def _render_trace(steps: Iterable[TraceStep]) -> str:
     items = list(steps)
     if not items:
-        items = [TraceStep(label=label, status="waiting") for label in TRACE_LABELS.values()]
+        return "## Process Trace\n\nNo operations yet."
     rows = ["## Process Trace"]
     statuses = {
         "waiting": "Waiting",
@@ -254,13 +297,18 @@ def _render_trace(steps: Iterable[TraceStep]) -> str:
     for index, step in enumerate(items, 1):
         status = step.status if step.status in statuses else "waiting"
         duration = f" · {step.duration_ms:.0f} ms" if step.duration_ms is not None else ""
-        rows.extend(
-            (
-                f"**{index}. {step.label}**",
-                f"{statuses[status]}{duration}",
-                "---",
+        rows.extend((f"**{index}. {step.label}**", f"{statuses[status]}{duration}"))
+        if step.detail:
+            rows.append(step.detail)
+        if step.total_tokens is not None:
+            rows.append(
+                f"{step.input_tokens or 0:,} input · {step.output_tokens or 0:,} output"
+                f" · {step.total_tokens:,} total"
             )
-        )
+        rows.append("---")
+    token_total = sum(step.total_tokens or 0 for step in items)
+    if token_total:
+        rows.append(f"**Total · {token_total:,} tokens**")
     return "\n\n".join(rows)
 
 
@@ -277,7 +325,10 @@ def _working_content(activity: str, pulse: int) -> str:
 
 def main() -> None:
     reporter = SessionProgressReporter()
-    application = build_application(progress_reporter=reporter)
+    application = build_application(
+        progress_reporter=reporter,
+        llm_usage_reporter=reporter,
+    )
     build_ui(application, reporter).queue().launch(
         theme=_theme(),
     )
