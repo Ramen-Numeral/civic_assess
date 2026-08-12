@@ -1,0 +1,66 @@
+# Copy this file to development.toml for the local quickstart.
+# Live tests and evaluations use the same APP_ENV configuration.
+# Copy it to production.toml only when preparing a deployment.
+# Keep those environment-specific copies local; only example.toml belongs in Git.
+# Each repeated [[routes.<role>]] block is one model candidate. Candidates are
+# attempted from top to bottom; add fallbacks below the preferred model.
+# Every active provider must map to its environment-variable name in [api_keys].
+
+[api_keys]
+openai = "OPENAI_API_KEY"
+
+[[routes.validator]]
+provider = "openai"
+model = "gpt-4.1-mini"
+temperature = 0.0
+timeout_seconds = 30
+max_retries = 2
+
+[[routes.query_resolver]]
+provider = "openai"
+model = "gpt-4.1-mini"
+temperature = 0.0
+timeout_seconds = 30
+max_retries = 2
+
+[[routes.query_diversifier]]
+provider = "openai"
+model = "gpt-4.1-mini"
+temperature = 0.0
+timeout_seconds = 30
+max_retries = 2
+
+[[routes.evidence_coverage]]
+provider = "openai"
+model = "gpt-4.1-mini"
+temperature = 0.0
+timeout_seconds = 30
+max_retries = 2
+
+[[routes.answer_writer]]
+provider = "openai"
+model = "gpt-4.1-mini"
+temperature = 0.0
+timeout_seconds = 30
+max_retries = 2
+
+[[routes.answer_auditor]]
+provider = "openai"
+model = "gpt-4.1-mini"
+temperature = 0.0
+timeout_seconds = 30
+max_retries = 2
+
+[[routes.conversation_summarizer]]
+provider = "openai"
+model = "gpt-4.1-mini"
+temperature = 0.0
+timeout_seconds = 30
+max_retries = 2
+
+[[routes.rewriter]]
+provider = "openai"
+model = "gpt-4.1-mini"
+temperature = 0.0
+timeout_seconds = 30
+max_retries = 2

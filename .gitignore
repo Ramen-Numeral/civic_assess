@@ -33,9 +33,9 @@ data/*.sqlite3-wal
 
 
 
-/README.md
 /app/api/
 /app/features/*/README.md
 /config/environments/*.toml
+!/config/environments/example.toml
 /docs/
 /scripts/
