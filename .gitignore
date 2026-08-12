@@ -39,4 +39,3 @@ data/*.sqlite3-wal
 /config/environments/*.toml
 /docs/
 /scripts/
-/tests/
