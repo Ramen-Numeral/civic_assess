@@ -13,6 +13,7 @@ from app.application import ChatInteractionRequest
 from app.bootstrap import Application, build_application
 from app.observability.llm_usage import LLMAttemptMetrics
 from app.observability.progress import ProgressEvent
+from config.settings import Settings, load_application_config
 
 
 class ChatMessage(TypedDict):
@@ -104,7 +105,11 @@ def _theme() -> gr.Theme:
 def build_ui(
     application: Application,
     reporter: SessionProgressReporter,
+    *,
+    concurrency_limit: int = 2,
 ) -> gr.Blocks:
+    if concurrency_limit < 1:
+        raise ValueError("UI concurrency limit must be positive")
     def capture_message(value: str) -> tuple[str, str]:
         return value, ""
 
@@ -239,7 +244,8 @@ def build_ui(
             inputs,
             outputs,
             show_progress="minimal",
-            concurrency_limit=None,
+            concurrency_limit=concurrency_limit,
+            concurrency_id="research",
         )
         button_submit = submit.click(
             capture_message,
@@ -253,7 +259,8 @@ def build_ui(
             inputs,
             outputs,
             show_progress="minimal",
-            concurrency_limit=None,
+            concurrency_limit=concurrency_limit,
+            concurrency_id="research",
         )
     return interface
 
@@ -324,13 +331,31 @@ def _working_content(activity: str, pulse: int) -> str:
 
 
 def main() -> None:
+    settings = load_application_config()
     reporter = SessionProgressReporter()
     application = build_application(
+        settings,
         progress_reporter=reporter,
         llm_usage_reporter=reporter,
     )
-    build_ui(application, reporter).queue().launch(
+    build_ui(
+        application,
+        reporter,
+        concurrency_limit=3 if settings.require_authentication else 2,
+    ).queue(max_size=20, api_open=False).launch(
         theme=_theme(),
+        auth=_authentication(settings),
+    )
+
+
+def _authentication(settings: Settings) -> tuple[str, str] | None:
+    if not settings.require_authentication:
+        return None
+    assert settings.gradio_username is not None
+    assert settings.gradio_password is not None
+    return (
+        settings.gradio_username.get_secret_value(),
+        settings.gradio_password.get_secret_value(),
     )
 
 

@@ -5,7 +5,8 @@ import pytest
 
 from app.observability.progress import ProgressEvent, ProgressStatus
 from app.roles import AgentRole
-from app.ui import SessionProgressReporter, _working_content, build_ui
+from app.ui import SessionProgressReporter, _authentication, _working_content, build_ui
+from config.settings import Settings
 
 
 pytestmark = pytest.mark.unit
@@ -44,6 +45,15 @@ def test_ui_builds_chat_and_trace_sidebar() -> None:
 
     assert "chat-panel" in element_ids
     assert "trace-sidebar" in element_ids
+
+
+def test_authentication_is_explicit_and_secret_backed() -> None:
+    settings = Settings.model_construct(
+        require_authentication=False,
+        gradio_username=None,
+        gradio_password=None,
+    )
+    assert _authentication(settings) is None
 
 
 def test_working_message_pulses_without_exposing_reasoning() -> None:

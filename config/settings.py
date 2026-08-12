@@ -25,6 +25,9 @@ CONFIG_DIR = ROOT / "config" / "environments"
 class Settings(BaseSettings):
     environment: Environment
     debug: bool = False
+    require_authentication: bool = False
+    gradio_username: SecretStr | None = None
+    gradio_password: SecretStr | None = None
     sqlite_database_path: Path = DEFAULT_SQLITE_DATABASE_PATH
     conversation_ttl_minutes: int = Field(default=120, ge=1, le=10_080)
     conversation_turn_retention: int = Field(default=8, ge=1, le=50)
@@ -66,6 +69,11 @@ class Settings(BaseSettings):
             or self.evidence_rrf_semantic_weight
         ):
             raise ValueError("At least one evidence retrieval weight must be positive")
+        credentials = (self.gradio_username, self.gradio_password)
+        if any(credentials) and not all(credentials):
+            raise ValueError("Gradio username and password must be configured together")
+        if self.require_authentication and not all(credentials):
+            raise ValueError("Gradio credentials are required when authentication is enabled")
         return self
 
 
@@ -118,6 +126,15 @@ def load_application_config(
     return Settings(
         environment=selected,
         debug=values.get("DEBUG", False),
+        require_authentication=values.get("REQUIRE_AUTHENTICATION", False),
+        gradio_username=(
+            SecretStr(values["GRADIO_USERNAME"])
+            if values.get("GRADIO_USERNAME") else None
+        ),
+        gradio_password=(
+            SecretStr(values["GRADIO_PASSWORD"])
+            if values.get("GRADIO_PASSWORD") else None
+        ),
         sqlite_database_path=resolve_database_path(
             values.get("SQLITE_DATABASE_PATH", "data/civic_assess.sqlite3")
         ),

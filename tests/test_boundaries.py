@@ -81,6 +81,12 @@ def test_example_config_is_a_complete_loadable_template(tmp_path: Path) -> None:
     assert set(settings.routes) == set(AgentRole)
     assert all(settings.routes[role] for role in AgentRole)
 
+    with pytest.raises(ValueError, match="Gradio credentials are required"):
+        load_application_config(
+            "development", config_dir=config_dir, env_file=tmp_path / ".env",
+            environ={"OPENAI_API_KEY": "placeholder", "REQUIRE_AUTHENTICATION": "1"},
+        )
+
 
 @pytest.mark.unit
 @pytest.mark.regression
