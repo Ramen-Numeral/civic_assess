@@ -1,4 +1,3 @@
-from collections.abc import Mapping
 from dataclasses import dataclass
 
 from config.settings import Settings, load_application_config
@@ -22,7 +21,6 @@ from app.features.query_diversification.service import QueryDiversificationServi
 from app.features.query_reframe.service import QueryReframeService
 from app.features.query_resolution.service import QueryResolutionService
 from app.features.research_acquisition.service import ResearchAcquisitionService
-from app.infrastructure.llm.client import LLM
 from app.infrastructure.llm.factory import build_llms
 from app.infrastructure.persistence import (
     SQLiteConversationRepository,
@@ -52,16 +50,6 @@ from app.roles import AgentRole
 
 @dataclass(frozen=True)
 class Application:
-    settings: Settings
-    llms: Mapping[AgentRole, LLM]
-    database: SQLiteDatabase
-    conversations: ConversationService
-    conversation_contexts: ConversationContextService
-    answer_synthesis: AnswerSynthesisService
-    answers: AnswerCoordinator
-    evidence_coverage: EvidenceCoverageService
-    evidence_retrieval: EvidenceRetrievalService
-    research: ResearchCoordinator
     chat_interactions: ChatInteractionService
 
 
@@ -190,15 +178,5 @@ def build_application(
         state_coordinator=state_coordinator,
     )
     return Application(
-        settings=resolved,
-        llms=llms,
-        database=database,
-        conversations=conversations,
-        conversation_contexts=conversation_contexts,
-        answer_synthesis=answer_synthesis,
-        answers=answers,
-        evidence_coverage=evidence_coverage,
-        evidence_retrieval=evidence_retrieval,
-        research=research,
         chat_interactions=chat_interactions,
     )

@@ -94,10 +94,6 @@ class ConversationService:
             conversation_id, turn_id,
         )
 
-    async def end_conversation(self, conversation_id: UUID) -> None:
-        if not await self._repository.delete_conversation(conversation_id):
-            raise UnknownConversationError()
-
     async def _require_active(self, conversation_id: UUID) -> Conversation:
         conversation = await self._repository.get_conversation(conversation_id)
         if conversation is None:

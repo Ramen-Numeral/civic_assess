@@ -14,7 +14,6 @@ from app.domain.conversation import (
     Conversation,
     ConversationContext,
     ConversationRole,
-    StoredConversationTurn,
 )
 from app.features.conversation import (
     ConversationContextService,
@@ -39,8 +38,6 @@ class ChatInteractionRequest(BaseModel):
 class ChatInteractionResult:
     """Internal result; it is not a public transport contract."""
 
-    user_turn: StoredConversationTurn
-    assistant_turn: StoredConversationTurn | None
     response_text: str | None
     workflow_state: ChatState
 
@@ -171,24 +168,15 @@ class ChatInteractionService:
                 request.conversation_id, user_turn.turn_id,
             ):
                 raise RuntimeError("Provisional user turn could not be discarded")
-            assistant_turn = (
+            if response is not None and not ephemeral:
                 await self._conversations.append_assistant_turn(
                     conversation_id=request.conversation_id,
                     content=response,
                 )
-                if response is not None and not ephemeral
-                else None
-            )
             return ChatInteractionResult(
-                user_turn=user_turn,
-                assistant_turn=assistant_turn,
                 response_text=response,
                 workflow_state=state,
             )
-
-    async def end_conversation(self, conversation_id: UUID) -> None:
-        async with self._locks.hold(conversation_id):
-            await self._conversations.end_conversation(conversation_id)
 
 
 def _pending_reframe(context: ConversationContext) -> str | None:

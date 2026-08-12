@@ -50,6 +50,7 @@ def render_grounded_answer(
         raise ValueError("Rendered paragraph cites unavailable evidence")
     sources = cited_sources(draft, evidence)
     numbers = {url: index for index, url in enumerate(sources, 1)}
+    urls = {index: url for url, index in numbers.items()}
     cited = [(available[chunks[0]], chunks) for chunks in sources.values()]
 
     paragraphs = []
@@ -61,13 +62,13 @@ def render_grounded_answer(
                 if (source := references.get(ref)) is not None
                 and source.chunk_id in paragraph.supporting_chunk_ids
             }
-            return _anchors(sorted(resolved))
+            return _anchors(sorted(resolved), urls)
         text = INLINE_EVIDENCE_RUN.sub(citation, item.text)
-        if "#source-" not in text:
+        if not any(f'href="{url}"' in text for url in urls.values()):
             text += " " + _anchors(sorted({
                 numbers[str(available[chunk].canonical_url)]
                 for chunk in referenced_chunks(item, evidence)
-            }))
+            }), urls)
         paragraphs.append(text)
 
     body = "\n\n".join(paragraphs) or (
@@ -87,5 +88,8 @@ def render_grounded_answer(
     return "\n\n".join(sections)
 
 
-def _anchors(numbers: list[int]) -> str:
-    return "".join(f'<a href="#source-{item}">[{item}]</a>' for item in numbers)
+def _anchors(numbers: list[int], urls: dict[int, str]) -> str:
+    return "".join(
+        f'<a href="{escape(urls[item], quote=True)}">[{item}]</a>'
+        for item in numbers
+    )

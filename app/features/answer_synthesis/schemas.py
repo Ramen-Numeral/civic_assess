@@ -99,15 +99,3 @@ class AnswerAudit(BaseModel):
         return self.answer_quality >= minimum and all(
             rating >= minimum for rating in self.paragraph_support.values()
         )
-
-    @property
-    def verdict(self) -> str:
-        return "pass" if self.passes(5) else "revise"
-
-    @property
-    def unsupported_paragraph_ids(self) -> tuple[UUID, ...]:
-        return tuple(
-            paragraph_id
-            for paragraph_id, rating in self.paragraph_support.items()
-            if rating <= 2
-        )
