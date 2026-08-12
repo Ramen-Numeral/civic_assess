@@ -10,7 +10,7 @@ import gradio as gr
 from gradio.themes.utils import fonts
 
 from app.application import ChatInteractionRequest
-from app.bootstrap.application import Application, build_application
+from app.bootstrap import Application, build_application
 from app.observability.llm_usage import LLMAttemptMetrics
 from app.observability.progress import ProgressEvent
 

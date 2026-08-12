@@ -3,22 +3,19 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.domain.acquisition import QueryAcquisitionFailure
-from app.domain.research import ResearchPlan, ResearchQuerySet
+from app.domain.research import QueryAcquisitionFailure, ResearchPlan, ResearchQuerySet
 from app.domain.validation import NonBlankText
-from app.features.evidence_coverage.schemas import (
+from app.features.evidence.coverage import EvidenceCoverageService
+from app.features.evidence.errors import EvidenceIngestionError
+from app.features.evidence.ingestion import EvidenceIngestionService
+from app.features.evidence.models import (
+    EvidenceCandidate,
     EvidenceCoverageAssessment,
     EvidenceCoverageRequest,
     EvidenceGap,
-)
-from app.features.evidence_coverage.service import EvidenceCoverageService
-from app.features.evidence_ingestion.errors import EvidenceIngestionError
-from app.features.evidence_ingestion.service import EvidenceIngestionService
-from app.features.evidence_retrieval.schemas import (
-    EvidenceCandidate,
     EvidenceRetrievalSet,
 )
-from app.features.evidence_retrieval.service import EvidenceRetrievalService
+from app.features.evidence.retrieval import EvidenceRetrievalService
 from app.features.query_diversification.schemas import (
     GapDirectedQueryPlanningRequest,
     QueryDiversificationRequest,

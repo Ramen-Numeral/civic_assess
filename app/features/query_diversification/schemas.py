@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 
 from app.domain.research import OriginalResearchQuery, ResearchRequirement, TemporalScope
 from app.domain.validation import NonBlankText
-from app.features.evidence_coverage.schemas import EvidenceGap
+from app.features.evidence.models import EvidenceGap
 
 
 PlanningText = Annotated[

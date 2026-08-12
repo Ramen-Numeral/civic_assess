@@ -10,7 +10,7 @@ from app.domain.conversation import (
     ConversationStateSnapshot,
     StoredConversationTurn,
 )
-from app.features.conversation_memory.repository import (
+from app.features.conversation.repository import (
     AppendUserTurnResult,
     AppendUserTurnStatus,
     ConversationRepository,

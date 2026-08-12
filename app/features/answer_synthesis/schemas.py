@@ -3,10 +3,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
-from app.domain.validation import NonBlankText
 from app.domain.research import TemporalScope
-from app.features.evidence_coverage.schemas import EvidenceBasis, SourceFitness
-from app.features.evidence_retrieval.schemas import EvidenceCandidate
+from app.domain.validation import NonBlankText
+from app.features.evidence.models import EvidenceBasis, EvidenceCandidate, SourceFitness
 
 
 FindingRef = Annotated[str, StringConstraints(pattern=r"^F[1-9]\d*$")]

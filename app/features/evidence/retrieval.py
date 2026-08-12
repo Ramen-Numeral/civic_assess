@@ -4,14 +4,14 @@ import math
 from uuid import UUID
 
 from app.domain.research import ResearchQuerySet
-from app.features.evidence_ingestion.embedder import EvidenceEmbedder
-from app.features.evidence_ingestion.repository import EvidenceRepository
-from app.features.evidence_retrieval.schemas import (
+from app.features.evidence.embedding import EvidenceEmbedder
+from app.features.evidence.repository import EvidenceRepository
+from app.features.evidence.models import (
     EvidenceRetrievalSet,
     QueryEvidenceRetrieval,
     ScoredEvidenceCandidate,
 )
-from app.features.evidence_retrieval.ranking import finalize_candidates
+from app.features.evidence.ranking import finalize_candidates
 
 
 class EvidenceRetrievalService:

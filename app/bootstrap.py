@@ -4,18 +4,20 @@ from dataclasses import dataclass
 from config.settings import Settings, load_application_config
 from app.application import ChatInteractionService
 from app.features.answer_synthesis import AnswerSynthesisService
-from app.features.conversation_context import ConversationContextService
-from app.features.conversation_memory import ConversationService
-from app.features.conversation_state import (
+from app.features.conversation import (
+    ConversationContextService,
+    ConversationService,
     ConversationStateCoordinator,
     ConversationStateService,
 )
 from app.features.input_validation.service import InputValidationService
-from app.features.evidence_ingestion.chunker import MarkdownChunker
-from app.features.evidence_ingestion.embedder import EvidenceEmbedder
-from app.features.evidence_ingestion.service import EvidenceIngestionService
-from app.features.evidence_coverage import EvidenceCoverageService
-from app.features.evidence_retrieval.service import EvidenceRetrievalService
+from app.features.evidence import (
+    EvidenceCoverageService,
+    EvidenceIngestionService,
+    EvidenceRetrievalService,
+)
+from app.features.evidence.chunking import MarkdownChunker
+from app.features.evidence.embedding import EvidenceEmbedder
 from app.features.query_diversification.service import QueryDiversificationService
 from app.features.query_reframe.service import QueryReframeService
 from app.features.query_resolution.service import QueryResolutionService

@@ -2,11 +2,11 @@ import json
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from app.features.evidence_coverage.errors import (
+from app.features.evidence.errors import (
     EvidenceCoverageError,
     InvalidEvidenceCoverageProposalError,
 )
-from app.features.evidence_coverage.schemas import (
+from app.features.evidence.models import (
     EvidenceCoverageAssessment,
     EvidenceCoverageProposal,
     EvidenceCoverageRequest,

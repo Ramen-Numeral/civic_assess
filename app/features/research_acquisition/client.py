@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Protocol
 
-from app.domain.acquisition import AcquisitionFailureCode
+from app.domain.research import AcquisitionFailureCode
 
 
 @dataclass(frozen=True)

@@ -2,13 +2,13 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
 
-from app.features.evidence_ingestion.schemas import (
+from app.features.evidence.models import (
     EvidenceIngestionBatch,
     EvidenceWriteResult,
 )
 
 if TYPE_CHECKING:
-    from app.features.evidence_retrieval.schemas import (
+    from app.features.evidence.models import (
         EvidenceCandidate,
         ScoredEvidenceCandidate,
     )

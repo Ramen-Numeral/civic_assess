@@ -7,14 +7,14 @@ from app.domain.conversation import (
     ConversationStateSnapshot,
     StoredConversationTurn,
 )
-from app.features.conversation_memory.repository import (
+from app.features.conversation.repository import (
     ConversationRepository,
     StateWriteStatus,
 )
-from app.features.conversation_memory.service import ConversationService
-from app.features.conversation_state.errors import ConversationStateError
-from app.features.conversation_state.schemas import ConversationSummaryRequest
-from app.features.conversation_state.service import ConversationStateService
+from app.features.conversation.service import ConversationService
+from app.features.conversation.errors import ConversationStateError
+from app.features.conversation.schemas import ConversationSummaryRequest
+from app.features.conversation.state import ConversationStateService
 
 
 CONVERSATION_STATE_SUMMARIZER_VERSION = "v1"

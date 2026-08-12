@@ -3,12 +3,12 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 from app.domain.conversation import Conversation, StoredConversationTurn
-from app.features.conversation_memory.errors import (
+from app.features.conversation.errors import (
     ClientMessageConflictError,
     ExpiredConversationError,
     UnknownConversationError,
 )
-from app.features.conversation_memory.repository import (
+from app.features.conversation.repository import (
     AppendUserTurnStatus,
     ConversationRepository,
 )

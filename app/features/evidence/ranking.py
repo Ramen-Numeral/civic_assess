@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from uuid import UUID
 
-from app.features.evidence_retrieval.schemas import (
+from app.features.evidence.models import (
     EvidenceCandidate,
     QueryEvidenceRetrieval,
     RankedEvidenceCandidate,

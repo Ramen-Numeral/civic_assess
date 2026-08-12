@@ -7,13 +7,13 @@ from app.domain.conversation import (
     ConversationRole,
     StoredConversationTurn,
 )
-from app.features.conversation_context.errors import (
+from app.features.conversation.errors import (
     ContextCatchUpRequiredError,
     CurrentTurnUnavailableError,
     InvalidConversationStateError,
 )
-from app.features.conversation_memory.repository import ConversationRepository
-from app.features.conversation_memory.service import ConversationService
+from app.features.conversation.repository import ConversationRepository
+from app.features.conversation.service import ConversationService
 
 
 class ConversationContextService:

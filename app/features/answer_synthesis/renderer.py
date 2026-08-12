@@ -3,7 +3,7 @@ from html import escape
 from uuid import UUID
 
 from app.features.answer_synthesis.schemas import AnswerParagraph, NaturalAnswerDraft
-from app.features.evidence_retrieval.schemas import EvidenceCandidate
+from app.features.evidence.models import EvidenceCandidate
 
 
 INLINE_EVIDENCE_REF = re.compile(r"\[\[E([1-9]\d*)\]\]")

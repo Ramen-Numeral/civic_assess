@@ -3,7 +3,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from app.domain.acquisition import (
+from app.domain.research import (
     AcquiredSearchResult,
     QueryAcquisitionFailure,
     QueryAcquisitionOutcome,

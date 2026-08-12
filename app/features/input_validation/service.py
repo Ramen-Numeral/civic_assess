@@ -10,9 +10,8 @@ from app.domain.validation import (
     InstructionIntegrityAssessment,
     ScopeAssessment,
 )
-from app.features.input_validation.config import MAX_QUERY_LENGTH
 from app.features.input_validation.errors import InputValidationError
-from app.features.input_validation.normalize import normalize_query
+from app.features.input_validation.preflight import MAX_QUERY_LENGTH, normalize_query
 from app.features.input_validation.schemas import InputValidationRequest
 from app.infrastructure.llm.client import LLMClient
 from app.infrastructure.llm.errors import LLMError

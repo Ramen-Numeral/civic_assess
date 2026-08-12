@@ -2,11 +2,11 @@ import json
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from app.features.conversation_state.errors import (
+from app.features.conversation.errors import (
     ConversationStateError,
     InvalidConversationStateProposalError,
 )
-from app.features.conversation_state.schemas import (
+from app.features.conversation.schemas import (
     ConversationStateProposal,
     ConversationSummaryRequest,
 )

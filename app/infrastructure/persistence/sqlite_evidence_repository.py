@@ -5,16 +5,14 @@ import struct
 from datetime import datetime
 from uuid import UUID
 
-from app.features.evidence_ingestion.repository import EvidenceRepository
-from app.features.evidence_ingestion.schemas import (
+from app.features.evidence.models import (
+    EvidenceCandidate,
     EvidenceIngestionBatch,
     EvidenceIngestionSnapshot,
+    ScoredEvidenceCandidate,
     EvidenceWriteResult,
 )
-from app.features.evidence_retrieval.schemas import (
-    EvidenceCandidate,
-    ScoredEvidenceCandidate,
-)
+from app.features.evidence.repository import EvidenceRepository
 from app.infrastructure.persistence.sqlite import SQLiteDatabase
 
 

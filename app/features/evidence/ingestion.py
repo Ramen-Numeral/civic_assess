@@ -3,20 +3,20 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from uuid import UUID, uuid5
 
-from app.domain.acquisition import (
+from app.domain.research import (
     AcquiredSearchResult,
     QueryAcquisitionSuccess,
     ResearchAcquisitionSet,
 )
 from app.domain.evidence import EvidenceDiscovery, EvidenceDocument
 from app.domain.research import ResearchQuerySet
-from app.features.evidence_ingestion.canonicalization import canonicalize_url
-from app.features.evidence_ingestion.chunker import MarkdownChunker
-from app.features.evidence_ingestion.embedder import EvidenceEmbedder
-from app.features.evidence_ingestion.errors import EvidenceIngestionError
-from app.features.evidence_ingestion.normalizer import has_substance, normalize_markdown
-from app.features.evidence_ingestion.repository import EvidenceRepository
-from app.features.evidence_ingestion.schemas import (
+from app.features.evidence.canonicalization import canonicalize_url
+from app.features.evidence.chunking import MarkdownChunker
+from app.features.evidence.embedding import EvidenceEmbedder
+from app.features.evidence.errors import EvidenceIngestionError
+from app.features.evidence.normalization import has_substance, normalize_markdown
+from app.features.evidence.repository import EvidenceRepository
+from app.features.evidence.models import (
     EvidenceIngestionBatch,
     EvidenceIngestionSnapshot,
 )

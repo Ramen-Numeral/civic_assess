@@ -10,7 +10,7 @@ from pydantic import (
     field_validator,
 )
 
-from app.domain.acquisition import AcquisitionFailureCode
+from app.domain.research import AcquisitionFailureCode
 from app.features.research_acquisition.client import (
     SearchClientError,
     SearchHit,
