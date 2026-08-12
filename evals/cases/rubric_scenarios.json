@@ -1,0 +1,32 @@
+[
+  {
+    "case_id": "debt-ceiling-2023",
+    "title": "Debt ceiling negotiations in 2023",
+    "turns": ["What happened with the debt ceiling negotiations in 2023? What were the key positions of both parties?"],
+    "expectations": [{"route": "answer", "minimum_sources": 2, "minimum_answer_quality": 4, "maximum_unresolved_gaps": 0, "minimum_evidence_angles": 2}]
+  },
+  {
+    "case_id": "presidential-primaries-2024",
+    "title": "2024 presidential primary campaigns",
+    "turns": ["What are the key issues in the 2024 presidential primary campaigns?"],
+    "expectations": [{"route": "answer", "minimum_sources": 2, "minimum_answer_quality": 4, "maximum_unresolved_gaps": 0, "minimum_evidence_angles": 2}]
+  },
+  {
+    "case_id": "affirmative-action-decision",
+    "title": "Supreme Court affirmative-action decision",
+    "turns": ["Explain the recent Supreme Court decision on affirmative action in college admissions."],
+    "expectations": [{"route": "answer", "minimum_sources": 2, "minimum_answer_quality": 4, "maximum_unresolved_gaps": 0, "minimum_evidence_angles": 2}]
+  },
+  {
+    "case_id": "boundary-conversation",
+    "title": "Boundary-management conversation",
+    "turns": ["What's the weather like today?", "Can you help me with my homework?"],
+    "expectations": [{"route": "redirect"}, {"route": "redirect"}]
+  },
+  {
+    "case_id": "immigration-policy-debate",
+    "title": "Immigration-policy debate",
+    "turns": ["What's the current debate around immigration policy?"],
+    "expectations": [{"route": "answer", "minimum_sources": 2, "minimum_answer_quality": 4, "maximum_unresolved_gaps": 0, "minimum_evidence_angles": 2}]
+  }
+]

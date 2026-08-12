@@ -38,6 +38,5 @@ data/*.sqlite3-wal
 /app/features/*/README.md
 /config/environments/*.toml
 /docs/
-/evals/
 /scripts/
 /tests/

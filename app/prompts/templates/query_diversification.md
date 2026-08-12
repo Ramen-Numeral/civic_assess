@@ -6,7 +6,7 @@ Given one `validated_query`, return `temporal_scope` and one or more `requiremen
 - optional `evidence_expectation`;
 - one or more `evidence_angles`, each with one search query.
 
-Return at most `{diversified_query_count}` total angles. Every requirement must have at least one angle.
+Return between two and `{diversified_query_count}` total angles. Every requirement must have at least one angle. For contested questions, use materially different documented perspectives without manufacturing symmetry.
 
 Requirements are completion obligations. Angles are investigation paths.
 

@@ -379,6 +379,10 @@ class QueryDiversificationService:
     @staticmethod
     def _validate_plan(proposal, allowed_text: str) -> None:
         allowed_quantities = _quantities(allowed_text)
+        if sum(len(item.evidence_angles) for item in proposal.requirements) < 2:
+            raise InvalidQueryDiversificationError(
+                "Initial research plans require at least two evidence angles"
+            )
         requirements = [
             _normalize(requirement.description)
             for requirement in proposal.requirements
