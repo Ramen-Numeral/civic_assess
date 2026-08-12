@@ -35,14 +35,3 @@ class LLMUsageReporter:
 class NoOpLLMUsageReporter(LLMUsageReporter):
     def record(self, attempt: LLMAttemptMetrics) -> None:
         pass
-
-
-class InMemoryLLMUsageReporter(LLMUsageReporter):
-    def __init__(self) -> None:
-        self.attempts: list[LLMAttemptMetrics] = []
-
-    def record(self, attempt: LLMAttemptMetrics) -> None:
-        self.attempts.append(attempt)
-
-    def for_run(self, run_id: str) -> tuple[LLMAttemptMetrics, ...]:
-        return tuple(item for item in self.attempts if item.run_id == run_id)

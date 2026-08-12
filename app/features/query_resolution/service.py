@@ -78,6 +78,8 @@ class QueryResolutionService:
                 messages,
                 QueryResolutionResult,
             )
+            if result.resolved_query == request.normalized_query:
+                result = result.model_copy(update={"context_evidence": ()})
             self._validate_result(
                 request.normalized_query,
                 turns,

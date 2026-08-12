@@ -28,4 +28,16 @@ data/*.sqlite-shm
 data/*.sqlite-wal
 data/*.sqlite3-shm
 data/*.sqlite3-wal
-evals/reports/
+
+
+
+
+
+/README.md
+/app/api/
+/app/features/*/README.md
+/config/environments/*.toml
+/docs/
+/evals/
+/scripts/
+/tests/

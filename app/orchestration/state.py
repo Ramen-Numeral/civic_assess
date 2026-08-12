@@ -13,12 +13,14 @@ class ChatRoute(StrEnum):
     AWAIT_APPROVAL = "await_approval"
     AWAIT_CLARIFICATION = "await_clarification"
     NEW_QUERY_REQUIRED = "new_query_required"
+    REFRAME_DECLINED = "reframe_declined"
 
 
 class ChatState(TypedDict):
     original_request: str
     conversation_context: ConversationContext
     normalized_request: NotRequired[str]
+    approved_reframe: NotRequired[bool]
     query_resolution: NotRequired[QueryResolutionResult]
     gate_result: NotRequired[InputGateResult]
     research_result: NotRequired[ResearchResult]

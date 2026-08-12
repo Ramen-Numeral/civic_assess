@@ -30,6 +30,7 @@ from app.infrastructure.persistence import (
 from app.infrastructure.search import TavilySearchClient
 from app.observability.logging import configure_logging
 from app.observability.llm_usage import LLMUsageReporter
+from app.observability.progress import ProgressReporter
 from app.orchestration.orchestrator import ChatOrchestrator
 from app.orchestration.answer import AnswerCoordinator
 from app.orchestration.research import ResearchCoordinator
@@ -66,6 +67,7 @@ def build_application(
     settings: Settings | None = None,
     *,
     llm_usage_reporter: LLMUsageReporter | None = None,
+    progress_reporter: ProgressReporter | None = None,
 ) -> Application:
     resolved = settings or load_application_config()
     configure_logging(debug=resolved.debug)
@@ -175,6 +177,7 @@ def build_application(
             llm=llms[AgentRole.QUERY_RESOLVER],
             prompt=build_query_resolution_prompt(),
         ),
+        reporter=progress_reporter,
         research=research,
         answers=answers,
     )

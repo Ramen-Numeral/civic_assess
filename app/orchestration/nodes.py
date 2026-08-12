@@ -90,6 +90,12 @@ def build_query_resolution_node(
     service: QueryResolutionService,
 ) -> AgentNode[ChatState]:
     async def resolve_query(state: ChatState) -> dict[str, object]:
+        if state.get("approved_reframe"):
+            return {
+                "query_resolution": QueryResolutionResult(
+                    resolved_query=state["normalized_request"],
+                )
+            }
         context = state["conversation_context"]
         if not context.recent_turns and context.state is None:
             return {"query_resolution": QueryResolutionResult(

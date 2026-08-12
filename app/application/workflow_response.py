@@ -15,6 +15,26 @@ NEW_QUERY_MESSAGE = (
     "I couldn't produce a version of that question that fits the assistant's "
     "requirements without changing its meaning. Please ask it a different way."
 )
+REFRAME_APPROVAL_PREFIX = "I can help with this revised question:\n\n"
+REFRAME_APPROVAL_SUFFIX = (
+    "\n\nIf you would like me to proceed with this query, please say yes."
+)
+
+
+def reframe_approval_response(proposed_query: str) -> str:
+    return f"{REFRAME_APPROVAL_PREFIX}{proposed_query}{REFRAME_APPROVAL_SUFFIX}"
+
+
+def pending_reframe_query(response: str) -> str | None:
+    if not (
+        response.startswith(REFRAME_APPROVAL_PREFIX)
+        and response.endswith(REFRAME_APPROVAL_SUFFIX)
+    ):
+        return None
+    proposed_query = response[
+        len(REFRAME_APPROVAL_PREFIX) : -len(REFRAME_APPROVAL_SUFFIX)
+    ].strip()
+    return proposed_query or None
 
 
 def workflow_response(state: ChatState) -> str | None:
@@ -27,11 +47,9 @@ def workflow_response(state: ChatState) -> str | None:
         return resolution.clarification_question if resolution else None
     if route is ChatRoute.AWAIT_APPROVAL:
         proposal = state.get("query_reframe_proposal")
-        return (
-            f"I can help with this revised question: {proposal.proposed_query}\n\n"
-            "Would you like me to proceed?"
-            if proposal else None
-        )
+        return reframe_approval_response(proposal.proposed_query) if proposal else None
+    if route is ChatRoute.REFRAME_DECLINED:
+        return REFUSE_MESSAGE
     if route is ChatRoute.NEW_QUERY_REQUIRED:
         return NEW_QUERY_MESSAGE
 

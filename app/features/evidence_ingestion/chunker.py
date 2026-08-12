@@ -26,7 +26,7 @@ class MarkdownChunker:
         self,
         *,
         target_units: int = 350,
-        max_units: int = 450,
+        max_units: int = 400,
         overlap_units: int = 64,
         min_units: int = 100,
         unit_spans: Callable[[str], Sequence[tuple[int, int]]] | None = None,

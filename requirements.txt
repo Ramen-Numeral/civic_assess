@@ -6,7 +6,7 @@ langchain-groq
 langchain-openai
 langchain-anthropic
 pytest
-fastapi
+gradio>=6,<7
 httpx
 langgraph==1.2.9
 sentence-transformers>=5.7,<6

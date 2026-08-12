@@ -10,7 +10,6 @@ from app.orchestration.instrumentation import (
     AgentNode,
     instrument_node,
     log_route,
-    preserve_state,
 )
 from app.orchestration.nodes import (
     build_input_preflight_node,
@@ -68,11 +67,23 @@ def build_chat_graph(
     )
     routes = {"query_reframe": "query_reframe", "end": END}
     if research is not None:
-        graph.add_node("research", preserve_state(build_research_node(research)))
+        _add_observed_node(
+            graph,
+            "research",
+            AgentRole.QUERY_DIVERSIFIER,
+            build_research_node(research),
+            emitter,
+        )
         if answers is None:
             graph.add_edge("research", END)
         else:
-            graph.add_node("answer", preserve_state(build_answer_node(answers)))
+            _add_observed_node(
+                graph,
+                "answer",
+                AgentRole.ANSWER_WRITER,
+                build_answer_node(answers),
+                emitter,
+            )
             graph.add_edge("research", "answer")
             graph.add_edge("answer", END)
         routes["research"] = "research"

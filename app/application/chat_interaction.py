@@ -6,8 +6,16 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from app.application.workflow_response import workflow_response
-from app.domain.conversation import Conversation, StoredConversationTurn
+from app.application.workflow_response import (
+    pending_reframe_query,
+    workflow_response,
+)
+from app.domain.conversation import (
+    Conversation,
+    ConversationContext,
+    ConversationRole,
+    StoredConversationTurn,
+)
 from app.features.conversation_context import ConversationContextService
 from app.features.conversation_context.errors import ContextCatchUpRequiredError
 from app.features.conversation_memory import ConversationService
@@ -93,30 +101,69 @@ class ChatInteractionService:
                 content=request.message,
             )
             try:
-                context = await self._contexts.load(
-                    conversation_id=request.conversation_id,
-                    current_turn_id=user_turn.turn_id,
+                try:
+                    context = await self._contexts.load(
+                        conversation_id=request.conversation_id,
+                        current_turn_id=user_turn.turn_id,
+                    )
+                except ContextCatchUpRequiredError:
+                    if self._state_coordinator is None:
+                        raise
+                    await self._state_coordinator.catch_up(
+                        conversation_id=request.conversation_id,
+                        before_sequence=user_turn.sequence_number,
+                    )
+                    context = await self._contexts.load(
+                        conversation_id=request.conversation_id,
+                        current_turn_id=user_turn.turn_id,
+                    )
+                pending_reframe = _pending_reframe(context)
+                decision = user_turn.content.strip().casefold()
+                if pending_reframe is not None and decision == "yes":
+                    if not await self._conversations.discard_latest_user_turn(
+                        request.conversation_id,
+                        user_turn.turn_id,
+                    ):
+                        raise RuntimeError("Reframe approval could not be promoted")
+                    user_turn = await self._conversations.append_user_turn(
+                        conversation_id=request.conversation_id,
+                        client_message_id=request.client_message_id,
+                        content=pending_reframe,
+                    )
+                    context = context.model_copy(update={
+                        "current_turn_id": user_turn.turn_id,
+                    })
+                    state = await self._orchestrator.invoke(
+                        InputValidationRequest(query=pending_reframe),
+                        conversation_context=context,
+                        approved_reframe=True,
+                    )
+                elif pending_reframe is not None and decision == "no":
+                    state = ChatState(
+                        original_request=user_turn.content,
+                        conversation_context=context,
+                        chat_route=ChatRoute.REFRAME_DECLINED,
+                    )
+                else:
+                    state = await self._orchestrator.invoke(
+                        InputValidationRequest(query=user_turn.content),
+                        conversation_context=context,
+                    )
+            except Exception:
+                await self._conversations.discard_latest_user_turn(
+                    request.conversation_id,
+                    user_turn.turn_id,
                 )
-            except ContextCatchUpRequiredError:
-                if self._state_coordinator is None:
-                    raise
-                await self._state_coordinator.catch_up(
-                    conversation_id=request.conversation_id,
-                    before_sequence=user_turn.sequence_number,
-                )
-                context = await self._contexts.load(
-                    conversation_id=request.conversation_id,
-                    current_turn_id=user_turn.turn_id,
-                )
-            state = await self._orchestrator.invoke(
-                InputValidationRequest(query=user_turn.content),
-                conversation_context=context,
-            )
+                raise
             response = workflow_response(state)
             ephemeral = (
                 response is not None
                 and "answer_result" not in state
-                and state.get("chat_route") is not ChatRoute.AWAIT_CLARIFICATION
+                and state.get("chat_route") not in {
+                    ChatRoute.AWAIT_APPROVAL,
+                    ChatRoute.AWAIT_CLARIFICATION,
+                    ChatRoute.REFRAME_DECLINED,
+                }
             )
             if ephemeral and not await self._conversations.discard_latest_user_turn(
                 request.conversation_id, user_turn.turn_id,
@@ -140,3 +187,12 @@ class ChatInteractionService:
     async def end_conversation(self, conversation_id: UUID) -> None:
         async with self._locks.hold(conversation_id):
             await self._conversations.end_conversation(conversation_id)
+
+
+def _pending_reframe(context: ConversationContext) -> str | None:
+    if not context.recent_turns:
+        return None
+    latest = context.recent_turns[-1]
+    if latest.role is not ConversationRole.ASSISTANT:
+        return None
+    return pending_reframe_query(latest.content)
