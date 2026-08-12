@@ -1,6 +1,5 @@
 from typing import Literal
 
-
 ResearchAcquisitionErrorCode = Literal["acquisition_unavailable"]
 
 

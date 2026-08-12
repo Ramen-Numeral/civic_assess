@@ -5,20 +5,28 @@ from uuid import uuid4
 import pytest
 
 from app.domain.research import (
-    DiversifiedResearchQuery, OriginalResearchQuery, ResearchPlan,
-    ResearchQuerySet, ResearchRequirement,
+    DiversifiedResearchQuery,
+    OriginalResearchQuery,
+    ResearchPlan,
+    ResearchQuerySet,
+    ResearchRequirement,
 )
 from app.features.evidence.models import (
-    EvidenceCandidate, EvidenceCoverageAssessment, EvidenceGap,
-    EvidenceRetrievalSet, RankedEvidenceCandidate, RequirementFinding,
+    EvidenceCandidate,
+    EvidenceCoverageAssessment,
+    EvidenceGap,
+    EvidenceRetrievalSet,
+    RankedEvidenceCandidate,
+    RequirementFinding,
 )
 from app.features.query_diversification.schemas import (
-    InitialResearchPlanProposal, ProposedEvidenceAngle,
-    ProposedResearchRequirement, QueryDiversificationRequest,
+    InitialResearchPlanProposal,
+    ProposedEvidenceAngle,
+    ProposedResearchRequirement,
+    QueryDiversificationRequest,
 )
 from app.features.query_diversification.service import QueryDiversificationService
 from app.orchestration.research import ResearchCoordinator
-
 
 pytestmark = [pytest.mark.integration, pytest.mark.regression]
 
@@ -26,31 +34,50 @@ pytestmark = [pytest.mark.integration, pytest.mark.regression]
 def fixtures():
     conversation_id, requirement_id, query_id = uuid4(), uuid4(), uuid4()
     query_set = ResearchQuerySet(
-        original_query=OriginalResearchQuery(query_id=query_id, text="Canonical question"),
-        diversified_queries=(DiversifiedResearchQuery(
-            query_id=uuid4(), requirement_ids=(requirement_id,),
-            evidence_angle="Direct evidence", text="Canonical question evidence",
-        ),),
+        original_query=OriginalResearchQuery(
+            query_id=query_id, text="Canonical question"
+        ),
+        diversified_queries=(
+            DiversifiedResearchQuery(
+                query_id=uuid4(),
+                requirement_ids=(requirement_id,),
+                evidence_angle="Direct evidence",
+                text="Canonical question evidence",
+            ),
+        ),
     )
     plan = ResearchPlan(
-        requirements=(ResearchRequirement(
-            requirement_id=requirement_id,
-            description="Establish the answer.", evidence_angles=("Direct evidence",),
-        ),),
+        requirements=(
+            ResearchRequirement(
+                requirement_id=requirement_id,
+                description="Establish the answer.",
+                evidence_angles=("Direct evidence",),
+            ),
+        ),
         query_set=query_set,
     )
     evidence = EvidenceCandidate(
-        chunk_id=uuid4(), document_id=uuid4(), text="Evidence",
-        title="Source", canonical_url="https://example.com/source",
-        start_offset=0, end_offset=8,
+        chunk_id=uuid4(),
+        document_id=uuid4(),
+        text="Evidence",
+        title="Source",
+        canonical_url="https://example.com/source",
+        start_offset=0,
+        end_offset=8,
         last_discovered_at=datetime(2026, 8, 10, tzinfo=UTC),
     )
     retrieval = EvidenceRetrievalSet(
-        conversation_id=conversation_id, embedding_version=None, query_results=(),
-        ranked_candidates=(RankedEvidenceCandidate(
-            evidence=evidence, rank=1, rrf_score=0.1,
-            supporting_query_ids=(query_id,),
-        ),),
+        conversation_id=conversation_id,
+        embedding_version=None,
+        query_results=(),
+        ranked_candidates=(
+            RankedEvidenceCandidate(
+                evidence=evidence,
+                rank=1,
+                rrf_score=0.1,
+                supporting_query_ids=(query_id,),
+            ),
+        ),
     )
     return conversation_id, plan, evidence, retrieval
 
@@ -85,24 +112,36 @@ class Planner:
 
 def coordinator(retrieval, coverage, planner):
     return ResearchCoordinator(
-        Retriever(retrieval), Coverage(coverage), planner,
-        acquisition=None, ingestion=None, max_acquisition_rounds=2,
+        Retriever(retrieval),
+        Coverage(coverage),
+        planner,
+        acquisition=None,
+        ingestion=None,
+        max_acquisition_rounds=2,
     )
 
 
 def test_sufficient_local_evidence_stops_before_acquisition() -> None:
     conversation_id, plan, evidence, retrieval = fixtures()
-    assessment = EvidenceCoverageAssessment(findings=(RequirementFinding(
-        requirement_id=plan.requirements[0].requirement_id,
-        statement="The answer is established.",
-        supporting_chunk_ids=(evidence.chunk_id,),
-        evidence_basis="observed", source_fitness="fit",
-    ),))
+    assessment = EvidenceCoverageAssessment(
+        findings=(
+            RequirementFinding(
+                requirement_id=plan.requirements[0].requirement_id,
+                statement="The answer is established.",
+                supporting_chunk_ids=(evidence.chunk_id,),
+                evidence_basis="observed",
+                source_fitness="fit",
+            ),
+        )
+    )
     planner = Planner(plan)
 
-    result = asyncio.run(coordinator(retrieval, assessment, planner).research(
-        conversation_id=conversation_id, canonical_query="Canonical question",
-    ))
+    result = asyncio.run(
+        coordinator(retrieval, assessment, planner).research(
+            conversation_id=conversation_id,
+            canonical_query="Canonical question",
+        )
+    )
 
     assert result.selected_round.round_number == 0
     assert result.selected_round.coverage.sufficient
@@ -112,14 +151,22 @@ def test_sufficient_local_evidence_stops_before_acquisition() -> None:
 def test_missing_acquisition_returns_best_local_assessment() -> None:
     conversation_id, plan, _, retrieval = fixtures()
     requirement = plan.requirements[0]
-    assessment = EvidenceCoverageAssessment(gaps=(EvidenceGap(
-        requirement_id=requirement.requirement_id,
-        description="Material evidence gap", missing_evidence="Direct evidence",
-    ),))
+    assessment = EvidenceCoverageAssessment(
+        gaps=(
+            EvidenceGap(
+                requirement_id=requirement.requirement_id,
+                description="Material evidence gap",
+                missing_evidence="Direct evidence",
+            ),
+        )
+    )
 
-    result = asyncio.run(coordinator(retrieval, assessment, Planner(plan)).research(
-        conversation_id=conversation_id, canonical_query="Canonical question",
-    ))
+    result = asyncio.run(
+        coordinator(retrieval, assessment, Planner(plan)).research(
+            conversation_id=conversation_id,
+            canonical_query="Canonical question",
+        )
+    )
 
     assert result.rounds == (result.selected_round,)
     assert not result.selected_round.coverage.sufficient
@@ -140,12 +187,17 @@ def test_one_angle_plan_is_repaired_or_degrades_explicitly() -> None:
     def proposal(*angles):
         return InitialResearchPlanProposal(
             temporal_scope={},
-            requirements=(ProposedResearchRequirement(
-                description="Establish documented policy positions.",
-                evidence_angles=tuple(ProposedEvidenceAngle(
-                    description=angle, text=f"immigration policy {angle}"
-                ) for angle in angles),
-            ),),
+            requirements=(
+                ProposedResearchRequirement(
+                    description="Establish documented policy positions.",
+                    evidence_angles=tuple(
+                        ProposedEvidenceAngle(
+                            description=angle, text=f"immigration policy {angle}"
+                        )
+                        for angle in angles
+                    ),
+                ),
+            ),
         )
 
     request = QueryDiversificationRequest(
@@ -153,28 +205,49 @@ def test_one_angle_plan_is_repaired_or_degrades_explicitly() -> None:
     )
     repaired = QueryDiversificationService(
         llm=LLM(proposal("enforcement"), proposal("enforcement", "reform")),
-        prompt=Prompt(), gap_prompt=Prompt(), query_count=4,
+        prompt=Prompt(),
+        gap_prompt=Prompt(),
+        query_count=4,
     )
     degraded = QueryDiversificationService(
         llm=LLM(proposal("enforcement"), proposal("enforcement")),
-        prompt=Prompt(), gap_prompt=Prompt(), query_count=4,
+        prompt=Prompt(),
+        gap_prompt=Prompt(),
+        query_count=4,
     )
 
-    assert len(asyncio.run(repaired.plan_initial(request)).query_set.diversified_queries) == 2
-    assert len(asyncio.run(degraded.plan_initial(request)).query_set.diversified_queries) == 1
+    assert (
+        len(asyncio.run(repaired.plan_initial(request)).query_set.diversified_queries)
+        == 2
+    )
+    assert (
+        len(asyncio.run(degraded.plan_initial(request)).query_set.diversified_queries)
+        == 1
+    )
 
 
 def test_evidence_gap_runs_acquisition_ingestion_and_reassessment() -> None:
     conversation_id, plan, evidence, retrieval = fixtures()
-    gap = EvidenceCoverageAssessment(gaps=(EvidenceGap(
-        requirement_id=plan.requirements[0].requirement_id,
-        description="Missing evidence", missing_evidence="Direct evidence",
-    ),))
-    covered = EvidenceCoverageAssessment(findings=(RequirementFinding(
-        requirement_id=plan.requirements[0].requirement_id,
-        statement="The gap is resolved.", supporting_chunk_ids=(evidence.chunk_id,),
-        evidence_basis="observed", source_fitness="fit",
-    ),))
+    gap = EvidenceCoverageAssessment(
+        gaps=(
+            EvidenceGap(
+                requirement_id=plan.requirements[0].requirement_id,
+                description="Missing evidence",
+                missing_evidence="Direct evidence",
+            ),
+        )
+    )
+    covered = EvidenceCoverageAssessment(
+        findings=(
+            RequirementFinding(
+                requirement_id=plan.requirements[0].requirement_id,
+                statement="The gap is resolved.",
+                supporting_chunk_ids=(evidence.chunk_id,),
+                evidence_basis="observed",
+                source_fitness="fit",
+            ),
+        )
+    )
 
     class Sequence:
         def __init__(self, *values):
@@ -201,10 +274,18 @@ def test_evidence_gap_runs_acquisition_ingestion_and_reassessment() -> None:
             self.calls += 1
 
     acquisition, ingestion = Acquisition(), Ingestion()
-    result = asyncio.run(ResearchCoordinator(
-        Sequence(retrieval, retrieval), Assessments(gap, covered), Planner(plan),
-        acquisition, ingestion, max_acquisition_rounds=2,
-    ).research(conversation_id=conversation_id, canonical_query="Canonical question"))
+    result = asyncio.run(
+        ResearchCoordinator(
+            Sequence(retrieval, retrieval),
+            Assessments(gap, covered),
+            Planner(plan),
+            acquisition,
+            ingestion,
+            max_acquisition_rounds=2,
+        ).research(
+            conversation_id=conversation_id, canonical_query="Canonical question"
+        )
+    )
 
     assert acquisition.calls == ingestion.calls == 1
     assert [item.round_number for item in result.rounds] == [0, 1]

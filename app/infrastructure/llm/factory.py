@@ -1,19 +1,20 @@
 from collections.abc import Mapping
 from types import MappingProxyType
 
-from config.settings import Settings
-from config.llm import ModelProvider
 from app.infrastructure.llm.adapters import AnthropicAdapter, GroqAdapter, OpenAIAdapter
 from app.infrastructure.llm.client import LLM, RoutedModel
 from app.observability.llm_usage import LLMUsageReporter
 from app.roles import AgentRole
+from config.llm import ModelProvider
+from config.settings import Settings
 
-
-ADAPTERS = MappingProxyType({
-    ModelProvider.GROQ: GroqAdapter,
-    ModelProvider.OPENAI: OpenAIAdapter,
-    ModelProvider.ANTHROPIC: AnthropicAdapter,
-})
+ADAPTERS = MappingProxyType(
+    {
+        ModelProvider.GROQ: GroqAdapter,
+        ModelProvider.OPENAI: OpenAIAdapter,
+        ModelProvider.ANTHROPIC: AnthropicAdapter,
+    }
+)
 
 
 def build_llms(

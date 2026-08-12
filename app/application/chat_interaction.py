@@ -1,7 +1,7 @@
 import asyncio
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import AsyncIterator
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -129,9 +129,11 @@ class ChatInteractionService:
                         client_message_id=request.client_message_id,
                         content=pending_reframe,
                     )
-                    context = context.model_copy(update={
-                        "current_turn_id": user_turn.turn_id,
-                    })
+                    context = context.model_copy(
+                        update={
+                            "current_turn_id": user_turn.turn_id,
+                        }
+                    )
                     state = await self._orchestrator.invoke(
                         InputValidationRequest(original_query=pending_reframe),
                         conversation_context=context,
@@ -158,14 +160,16 @@ class ChatInteractionService:
             ephemeral = (
                 response is not None
                 and "answer_result" not in state
-                and state.get("chat_route") not in {
+                and state.get("chat_route")
+                not in {
                     ChatRoute.AWAIT_APPROVAL,
                     ChatRoute.AWAIT_CLARIFICATION,
                     ChatRoute.REFRAME_DECLINED,
                 }
             )
             if ephemeral and not await self._conversations.discard_latest_user_turn(
-                request.conversation_id, user_turn.turn_id,
+                request.conversation_id,
+                user_turn.turn_id,
             ):
                 raise RuntimeError("Provisional user turn could not be discarded")
             if response is not None and not ephemeral:

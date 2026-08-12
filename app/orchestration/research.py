@@ -16,16 +16,16 @@ from app.features.evidence.models import (
     EvidenceRetrievalSet,
 )
 from app.features.evidence.retrieval import EvidenceRetrievalService
+from app.features.query_diversification.errors import (
+    InvalidQueryDiversificationError,
+    QueryDiversificationError,
+)
 from app.features.query_diversification.schemas import (
     GapDirectedQueryPlanningRequest,
     QueryDiversificationRequest,
 )
-from app.features.query_diversification.errors import (
-    InvalidQueryDiversificationError, QueryDiversificationError,
-)
 from app.features.query_diversification.service import QueryDiversificationService
 from app.features.research_acquisition.service import ResearchAcquisitionService
-
 
 LOGGER = logging.getLogger(__name__)
 
@@ -68,14 +68,14 @@ class ResearchResult(BaseModel):
     def require_selected_completed_round(self) -> "ResearchResult":
         if self.selected_round not in self.rounds:
             raise ValueError("Selected research round must be completed")
-        if [item.round_number for item in self.rounds] != list(
-            range(len(self.rounds))
-        ):
+        if [item.round_number for item in self.rounds] != list(range(len(self.rounds))):
             raise ValueError("Research rounds must be contiguous from zero")
         available = {item.chunk_id for item in self.cumulative_evidence}
-        if any(chunk_id not in available
-               for finding in self.cumulative_coverage.findings
-               for chunk_id in finding.supporting_chunk_ids):
+        if any(
+            chunk_id not in available
+            for finding in self.cumulative_coverage.findings
+            for chunk_id in finding.supporting_chunk_ids
+        ):
             raise ValueError("Cumulative findings must cite cumulative evidence")
         return self
 
@@ -112,12 +112,18 @@ class ResearchCoordinator:
         conversation_id: UUID,
         canonical_query: NonBlankText,
     ) -> ResearchResult:
-        plan = await self._planner.plan_initial(QueryDiversificationRequest(
-            validated_query=canonical_query,
-        ))
+        plan = await self._planner.plan_initial(
+            QueryDiversificationRequest(
+                validated_query=canonical_query,
+            )
+        )
         query_set = plan.query_set
         first = await self._assess(
-            conversation_id, plan, query_set, None, round_number=0,
+            conversation_id,
+            plan,
+            query_set,
+            None,
+            round_number=0,
         )
         rounds = [first]
         cumulative = first.coverage
@@ -135,13 +141,16 @@ class ResearchCoordinator:
                     query_set = await self._planner.plan_for_gaps(
                         GapDirectedQueryPlanningRequest(
                             original_query=plan.query_set.original_query,
-                            requirements=plan.requirements, gaps=cumulative.gaps,
+                            requirements=plan.requirements,
+                            gaps=cumulative.gaps,
                             temporal_scope=plan.temporal_scope,
                         )
                     )
                 except (InvalidQueryDiversificationError, QueryDiversificationError):
-                    LOGGER.warning("Gap planning failed; finalizing cumulative research",
-                                   extra={"event": "research.gap_plan.degraded"})
+                    LOGGER.warning(
+                        "Gap planning failed; finalizing cumulative research",
+                        extra={"event": "research.gap_plan.degraded"},
+                    )
                     return _result(plan, rounds, cumulative)
             acquisition = await acquisition_service.acquire(query_set)
             failures = tuple(
@@ -201,17 +210,19 @@ class ResearchCoordinator:
             previous_round.evidence_frontier if previous_round else (),
         )
         view = _coverage_view(
-            retrieval, previous_round, frontier, maximum=self._coverage_max,
+            retrieval,
+            previous_round,
+            frontier,
+            maximum=self._coverage_max,
         )
         request = EvidenceCoverageRequest(
             canonical_query=plan.query_set.original_query.text,
             temporal_scope=plan.temporal_scope,
             requirements=tuple(
-                requirement for requirement in plan.requirements
-                if gaps is None or any(
-                    gap.requirement_id == requirement.requirement_id
-                    for gap in gaps
-                )
+                requirement
+                for requirement in plan.requirements
+                if gaps is None
+                or any(gap.requirement_id == requirement.requirement_id for gap in gaps)
             ),
             evidence_view=view,
         )
@@ -236,25 +247,31 @@ def _coverage_view(
     candidates = {item.chunk_id: item for item in frontier}
     cited = ()
     if previous_round:
-        cited = tuple(dict.fromkeys(
-            chunk_id
-            for finding in previous_round.coverage.findings
-            for chunk_id in finding.supporting_chunk_ids
-        ))
-    current = tuple(
-        item.evidence.chunk_id for item in retrieval.ranked_candidates
-    )
+        cited = tuple(
+            dict.fromkeys(
+                chunk_id
+                for finding in previous_round.coverage.findings
+                for chunk_id in finding.supporting_chunk_ids
+            )
+        )
+    current = tuple(item.evidence.chunk_id for item in retrieval.ranked_candidates)
     previous = previous_round.evidence_frontier if previous_round else ()
-    selected = set(tuple(dict.fromkeys((
-        *cited,
-        *current,
-        *(item.chunk_id for item in previous),
-    )))[:maximum])
+    selected = set(
+        tuple(
+            dict.fromkeys(
+                (
+                    *cited,
+                    *current,
+                    *(item.chunk_id for item in previous),
+                )
+            )
+        )[:maximum]
+    )
     return tuple(
         candidates[chunk_id]
-        for chunk_id in dict.fromkeys((*current, *cited, *(
-            item.chunk_id for item in previous
-        )))
+        for chunk_id in dict.fromkeys(
+            (*current, *cited, *(item.chunk_id for item in previous))
+        )
         if chunk_id in selected
     )
 
@@ -306,9 +323,11 @@ def _merge_coverage(
     unresolved = {gap.requirement_id for gap in cumulative.gaps}
     return EvidenceCoverageAssessment(
         findings=tuple(
-            finding for finding in cumulative.findings
+            finding
+            for finding in cumulative.findings
             if finding.requirement_id not in unresolved
-        ) + current.findings,
+        )
+        + current.findings,
         gaps=current.gaps,
     )
 
@@ -317,11 +336,14 @@ def _result(plan, rounds, coverage) -> ResearchResult:
     selected = rounds[-1] if coverage.sufficient else max(rounds, key=_round_quality)
     evidence = {item.chunk_id: item for item in rounds[-1].evidence_frontier}
     cited = dict.fromkeys(
-        chunk_id for finding in coverage.findings
+        chunk_id
+        for finding in coverage.findings
         for chunk_id in finding.supporting_chunk_ids
     )
     return ResearchResult(
-        plan=plan, rounds=tuple(rounds), selected_round=selected,
+        plan=plan,
+        rounds=tuple(rounds),
+        selected_round=selected,
         cumulative_coverage=coverage,
         cumulative_evidence=tuple(evidence[chunk_id] for chunk_id in cited),
     )

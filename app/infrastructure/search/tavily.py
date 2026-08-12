@@ -17,7 +17,6 @@ from app.features.research_acquisition.client import (
     SearchResponse,
 )
 
-
 ProviderText = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1),

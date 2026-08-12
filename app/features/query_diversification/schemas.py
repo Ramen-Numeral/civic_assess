@@ -2,15 +2,20 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
-from app.domain.research import OriginalResearchQuery, ResearchRequirement, TemporalScope
+from app.domain.research import (
+    OriginalResearchQuery,
+    ResearchRequirement,
+    TemporalScope,
+)
 from app.domain.validation import NonBlankText
 from app.features.evidence.models import EvidenceGap
-
 
 PlanningText = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=300),
 ]
+
+
 class QueryDiversificationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 

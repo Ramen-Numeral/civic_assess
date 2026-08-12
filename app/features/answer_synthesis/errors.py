@@ -1,6 +1,5 @@
 from typing import Literal
 
-
 AnswerSynthesisErrorCode = Literal["answer_writer_unavailable"]
 
 

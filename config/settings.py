@@ -15,7 +15,6 @@ from config.database import (
 )
 from config.llm import ModelCandidate, ModelProvider, Routes
 
-
 Environment = Literal["development", "test", "production"]
 ROOT = Path(__file__).resolve().parents[1]
 ENV_DIR = ROOT / "env"
@@ -48,12 +47,8 @@ class Settings(BaseSettings):
     evidence_lexical_candidate_count: int = Field(default=20, ge=1)
     evidence_semantic_candidate_count: int = Field(default=20, ge=1)
     evidence_rrf_k: int = Field(default=60, ge=1)
-    evidence_rrf_lexical_weight: float = Field(
-        default=1.0, ge=0, allow_inf_nan=False
-    )
-    evidence_rrf_semantic_weight: float = Field(
-        default=1.0, ge=0, allow_inf_nan=False
-    )
+    evidence_rrf_lexical_weight: float = Field(default=1.0, ge=0, allow_inf_nan=False)
+    evidence_rrf_semantic_weight: float = Field(default=1.0, ge=0, allow_inf_nan=False)
     evidence_coverage_candidate_count: int = Field(default=12, ge=1)
     evidence_coverage_context_max: int = Field(default=16, ge=1)
     evidence_max_chunks_per_document: int = Field(default=2, ge=1)
@@ -64,16 +59,15 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def require_retrieval_modality(self) -> "Settings":
-        if not (
-            self.evidence_rrf_lexical_weight
-            or self.evidence_rrf_semantic_weight
-        ):
+        if not (self.evidence_rrf_lexical_weight or self.evidence_rrf_semantic_weight):
             raise ValueError("At least one evidence retrieval weight must be positive")
         credentials = (self.gradio_username, self.gradio_password)
         if any(credentials) and not all(credentials):
             raise ValueError("Gradio username and password must be configured together")
         if self.require_authentication and not all(credentials):
-            raise ValueError("Gradio credentials are required when authentication is enabled")
+            raise ValueError(
+                "Gradio credentials are required when authentication is enabled"
+            )
         return self
 
 
@@ -103,7 +97,9 @@ def load_application_config(
         raise ValueError("LLM config requires only api_keys and routes")
     try:
         route_keys = {AgentRole(name) for name in raw["routes"]}
-        key_map = {ModelProvider(name): value for name, value in raw["api_keys"].items()}
+        key_map = {
+            ModelProvider(name): value for name, value in raw["api_keys"].items()
+        }
     except (AttributeError, ValueError) as exc:
         raise ValueError("Unknown role or provider in LLM config") from exc
     if route_keys != set(AgentRole):
@@ -129,11 +125,13 @@ def load_application_config(
         require_authentication=values.get("REQUIRE_AUTHENTICATION", False),
         gradio_username=(
             SecretStr(values["GRADIO_USERNAME"])
-            if values.get("GRADIO_USERNAME") else None
+            if values.get("GRADIO_USERNAME")
+            else None
         ),
         gradio_password=(
             SecretStr(values["GRADIO_PASSWORD"])
-            if values.get("GRADIO_PASSWORD") else None
+            if values.get("GRADIO_PASSWORD")
+            else None
         ),
         sqlite_database_path=resolve_database_path(
             values.get("SQLITE_DATABASE_PATH", "data/civic_assess.sqlite3")
@@ -165,9 +163,7 @@ def load_application_config(
             "EVIDENCE_EMBEDDING_MODEL_REVISION",
             "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a",
         ),
-        evidence_embedding_batch_size=values.get(
-            "EVIDENCE_EMBEDDING_BATCH_SIZE", 32
-        ),
+        evidence_embedding_batch_size=values.get("EVIDENCE_EMBEDDING_BATCH_SIZE", 32),
         evidence_embedding_device=values.get("EVIDENCE_EMBEDDING_DEVICE", "cpu"),
         evidence_lexical_candidate_count=values.get(
             "EVIDENCE_LEXICAL_CANDIDATE_COUNT", 20
@@ -176,18 +172,12 @@ def load_application_config(
             "EVIDENCE_SEMANTIC_CANDIDATE_COUNT", 20
         ),
         evidence_rrf_k=values.get("EVIDENCE_RRF_K", 60),
-        evidence_rrf_lexical_weight=values.get(
-            "EVIDENCE_RRF_LEXICAL_WEIGHT", 1.0
-        ),
-        evidence_rrf_semantic_weight=values.get(
-            "EVIDENCE_RRF_SEMANTIC_WEIGHT", 1.0
-        ),
+        evidence_rrf_lexical_weight=values.get("EVIDENCE_RRF_LEXICAL_WEIGHT", 1.0),
+        evidence_rrf_semantic_weight=values.get("EVIDENCE_RRF_SEMANTIC_WEIGHT", 1.0),
         evidence_coverage_candidate_count=values.get(
             "EVIDENCE_COVERAGE_CANDIDATE_COUNT", 12
         ),
-        evidence_coverage_context_max=values.get(
-            "EVIDENCE_COVERAGE_CONTEXT_MAX", 16
-        ),
+        evidence_coverage_context_max=values.get("EVIDENCE_COVERAGE_CONTEXT_MAX", 16),
         evidence_max_chunks_per_document=values.get(
             "EVIDENCE_MAX_CHUNKS_PER_DOCUMENT", 2
         ),

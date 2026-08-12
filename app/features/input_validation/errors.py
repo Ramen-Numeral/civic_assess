@@ -1,6 +1,5 @@
 from typing import Literal
 
-
 InputValidationErrorCode = Literal[
     "empty_query",
     "query_too_long",

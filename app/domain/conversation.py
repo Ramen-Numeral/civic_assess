@@ -11,7 +11,6 @@ from pydantic import (
 
 from app.domain.validation import NonBlankText
 
-
 CONVERSATION_CONTEXT_CHARACTER_LIMIT = 12_000
 
 
@@ -55,12 +54,10 @@ class StoredConversationTurn(ConversationTurn):
     @model_validator(mode="after")
     def require_client_id_only_for_user_turns(self) -> "StoredConversationTurn":
         user_has_id = (
-            self.role is ConversationRole.USER
-            and self.client_message_id is not None
+            self.role is ConversationRole.USER and self.client_message_id is not None
         )
         assistant_has_no_id = (
-            self.role is ConversationRole.ASSISTANT
-            and self.client_message_id is None
+            self.role is ConversationRole.ASSISTANT and self.client_message_id is None
         )
         if not (user_has_id or assistant_has_no_id):
             raise ValueError("Only user turns require a client message ID")
@@ -99,9 +96,7 @@ class ConversationContext(BaseModel):
     def require_consistent_sources(self) -> "ConversationContext":
         if any(turn.turn_id == self.current_turn_id for turn in self.recent_turns):
             raise ValueError("Current turn must remain separate from prior context")
-        if len({turn.turn_id for turn in self.recent_turns}) != len(
-            self.recent_turns
-        ):
+        if len({turn.turn_id for turn in self.recent_turns}) != len(self.recent_turns):
             raise ValueError("Conversation context turn IDs must be unique")
         if (
             self.state is not None
@@ -110,7 +105,9 @@ class ConversationContext(BaseModel):
             raise ValueError("Conversation state belongs to another conversation")
         has_state = self.state is not None
         if (self.status is ConversationContextStatus.COMPLETE) != has_state:
-            raise ValueError("Conversation context status must match state availability")
+            raise ValueError(
+                "Conversation context status must match state availability"
+            )
         return self
 
 

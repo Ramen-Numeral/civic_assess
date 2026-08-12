@@ -38,7 +38,7 @@ class ConversationStateService:
         request: ConversationSummaryRequest,
     ) -> ConversationStateProposal:
         turns = (
-            request.recent_turns[-self._raw_turn_count:]
+            request.recent_turns[-self._raw_turn_count :]
             if self._raw_turn_count
             else ()
         )
@@ -48,17 +48,22 @@ class ConversationStateService:
             )
         messages = [
             SystemMessage(content=self._prompt.build()),
-            HumanMessage(content=json.dumps({
-                "previous_state": (
-                    request.previous_state.model_dump(mode="json")
-                    if request.previous_state is not None
-                    else None
-                ),
-                "recent_turn_order": "oldest_to_newest",
-                "recent_turns": [
-                    turn.model_dump(mode="json") for turn in turns
-                ],
-            }, ensure_ascii=False)),
+            HumanMessage(
+                content=json.dumps(
+                    {
+                        "previous_state": (
+                            request.previous_state.model_dump(mode="json")
+                            if request.previous_state is not None
+                            else None
+                        ),
+                        "recent_turn_order": "oldest_to_newest",
+                        "recent_turns": [
+                            turn.model_dump(mode="json") for turn in turns
+                        ],
+                    },
+                    ensure_ascii=False,
+                )
+            ),
         ]
         try:
             return await self._llm.invoke_structured(
@@ -67,8 +72,7 @@ class ConversationStateService:
             )
         except LLMError as exc:
             if exc.failures and all(
-                failure.kind is FailureKind.INVALID_OUTPUT
-                for failure in exc.failures
+                failure.kind is FailureKind.INVALID_OUTPUT for failure in exc.failures
             ):
                 raise InvalidConversationStateProposalError(
                     "Summarizer returned invalid structured output"

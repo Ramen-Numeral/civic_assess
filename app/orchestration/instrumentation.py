@@ -9,7 +9,6 @@ from app.observability.progress import ProgressEmitter, ProgressStatus
 from app.orchestration.state import ChatRoute
 from app.roles import AgentRole
 
-
 LOGGER = logging.getLogger(__name__)
 StateT = TypeVar("StateT")
 AgentNode = Callable[[StateT], Awaitable[dict[str, object]]]
@@ -20,8 +19,9 @@ def preserve_state(node: AgentNode[StateT]) -> AgentNode[StateT]:
         try:
             return await node(state)
         except Exception as exc:
-            setattr(exc, "workflow_state", dict(state))
+            exc.workflow_state = dict(state)
             raise
+
     return observed
 
 
@@ -80,15 +80,14 @@ def log_route(
                 else None
             ),
             "validation_stage": validation_stage,
-            "scope": (
-                validation_analysis.scope.value if validation_analysis else None
-            ),
+            "scope": (validation_analysis.scope.value if validation_analysis else None),
             "behavior": (
                 validation_analysis.behavior.value if validation_analysis else None
             ),
             "instruction_integrity": (
                 validation_analysis.instruction_integrity.value
-                if validation_analysis else None
+                if validation_analysis
+                else None
             ),
         },
     )

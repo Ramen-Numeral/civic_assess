@@ -1,6 +1,5 @@
 from typing import Literal
 
-
 EvidenceIngestionErrorCode = Literal[
     "invalid_acquisition",
     "no_extractable_evidence",

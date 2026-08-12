@@ -1,6 +1,5 @@
 from typing import Literal
 
-
 QueryResolutionErrorCode = Literal["resolver_unavailable"]
 
 

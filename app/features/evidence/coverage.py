@@ -29,17 +29,19 @@ class EvidenceCoverageService:
     ) -> EvidenceCoverageAssessment:
         try:
             if not request.evidence_view:
-                return EvidenceCoverageAssessment(gaps=tuple(
-                    EvidenceGap(
-                        requirement_id=requirement.requirement_id,
-                        description=(
-                            "No local evidence addresses the requirement: "
-                            f"{requirement.description}"
-                        ),
-                        missing_evidence=requirement.description,
+                return EvidenceCoverageAssessment(
+                    gaps=tuple(
+                        EvidenceGap(
+                            requirement_id=requirement.requirement_id,
+                            description=(
+                                "No local evidence addresses the requirement: "
+                                f"{requirement.description}"
+                            ),
+                            missing_evidence=requirement.description,
+                        )
+                        for requirement in request.requirements
                     )
-                    for requirement in request.requirements
-                ))
+                )
             requirements = {
                 f"R{position}": requirement
                 for position, requirement in enumerate(request.requirements, 1)
@@ -50,34 +52,47 @@ class EvidenceCoverageService:
             }
             messages = [
                 SystemMessage(content=self._prompt.build()),
-                HumanMessage(content=json.dumps({
-                    "canonical_query": request.canonical_query,
-                    "temporal_scope": list(request.temporal_scope.spans),
-                    "requirements": [{
-                        "ref": ref,
-                        "description": requirement.description,
-                        "evidence_expectation": requirement.evidence_expectation,
-                        "investigated_angles": list(requirement.evidence_angles),
-                    } for ref, requirement in requirements.items()],
-                    "evidence": [{
-                        "ref": ref,
-                        "title": candidate.title,
-                        "canonical_url": str(candidate.canonical_url),
-                        "heading_path": candidate.heading_path,
-                        "text": candidate.text,
-                    } for ref, candidate in evidence.items()],
-                }, ensure_ascii=False)),
+                HumanMessage(
+                    content=json.dumps(
+                        {
+                            "canonical_query": request.canonical_query,
+                            "temporal_scope": list(request.temporal_scope.spans),
+                            "requirements": [
+                                {
+                                    "ref": ref,
+                                    "description": requirement.description,
+                                    "evidence_expectation": requirement.evidence_expectation,
+                                    "investigated_angles": list(
+                                        requirement.evidence_angles
+                                    ),
+                                }
+                                for ref, requirement in requirements.items()
+                            ],
+                            "evidence": [
+                                {
+                                    "ref": ref,
+                                    "title": candidate.title,
+                                    "canonical_url": str(candidate.canonical_url),
+                                    "heading_path": candidate.heading_path,
+                                    "text": candidate.text,
+                                }
+                                for ref, candidate in evidence.items()
+                            ],
+                        },
+                        ensure_ascii=False,
+                    )
+                ),
             ]
             proposal = await self._llm.invoke_structured(
-                messages, EvidenceCoverageProposal,
+                messages,
+                EvidenceCoverageProposal,
             )
             assessment = _resolve_proposal(proposal, requirements, evidence)
             _validate_requirements(request, assessment)
             return assessment
         except LLMError as exc:
             if exc.failures and all(
-                failure.kind is FailureKind.INVALID_OUTPUT
-                for failure in exc.failures
+                failure.kind is FailureKind.INVALID_OUTPUT for failure in exc.failures
             ):
                 raise InvalidEvidenceCoverageProposalError(
                     "Coverage model returned invalid structured output"
@@ -95,21 +110,27 @@ class EvidenceCoverageService:
 
 def _resolve_proposal(proposal, requirements, evidence):
     return EvidenceCoverageAssessment(
-        findings=tuple(RequirementFinding(
-            requirement_id=requirements[item.requirement_ref].requirement_id,
-            statement=item.statement,
-            supporting_chunk_ids=tuple(
-                evidence[ref].chunk_id for ref in item.evidence_refs
-            ),
-            evidence_basis=item.evidence_basis,
-            source_fitness=item.source_fitness,
-            qualification=item.qualification,
-        ) for item in proposal.findings),
-        gaps=tuple(EvidenceGap(
-            requirement_id=requirements[item.requirement_ref].requirement_id,
-            description=item.description,
-            missing_evidence=item.missing_evidence,
-        ) for item in proposal.gaps),
+        findings=tuple(
+            RequirementFinding(
+                requirement_id=requirements[item.requirement_ref].requirement_id,
+                statement=item.statement,
+                supporting_chunk_ids=tuple(
+                    evidence[ref].chunk_id for ref in item.evidence_refs
+                ),
+                evidence_basis=item.evidence_basis,
+                source_fitness=item.source_fitness,
+                qualification=item.qualification,
+            )
+            for item in proposal.findings
+        ),
+        gaps=tuple(
+            EvidenceGap(
+                requirement_id=requirements[item.requirement_ref].requirement_id,
+                description=item.description,
+                missing_evidence=item.missing_evidence,
+            )
+            for item in proposal.gaps
+        ),
     )
 
 

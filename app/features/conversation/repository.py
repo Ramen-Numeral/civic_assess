@@ -92,7 +92,9 @@ class ConversationRepository(Protocol):
     ) -> tuple[StoredConversationTurn, ...]: ...
 
     async def discard_latest_user_turn(
-        self, conversation_id: UUID, turn_id: UUID,
+        self,
+        conversation_id: UUID,
+        turn_id: UUID,
     ) -> bool: ...
 
     async def delete_conversation(self, conversation_id: UUID) -> bool: ...

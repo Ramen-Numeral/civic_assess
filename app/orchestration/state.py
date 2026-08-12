@@ -5,8 +5,8 @@ from app.domain.conversation import ConversationContext
 from app.domain.validation import InputGateResult
 from app.features.query_reframe.schemas import QueryReframeProposal
 from app.features.query_resolution.schemas import QueryResolutionResult
-from app.orchestration.research import ResearchResult
 from app.orchestration.answer import GroundedAnswerResult
+from app.orchestration.research import ResearchResult
 
 
 class ChatRoute(StrEnum):

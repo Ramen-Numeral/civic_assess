@@ -58,8 +58,7 @@ def finalize_candidates(
                     item.evidence, item.score, item.best_rank
                 )
             else:
-                if item.score > current.score:
-                    current.score = item.score
+                current.score = max(current.score, item.score)
                 current.best_rank = min(current.best_rank, item.best_rank)
 
     selected: list[_Ranked] = []

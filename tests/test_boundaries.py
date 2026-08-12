@@ -37,15 +37,22 @@ class ScriptedModel:
 
 def candidate(name: str) -> ModelCandidate:
     return ModelCandidate(
-        provider=ModelProvider.GROQ, model=name, temperature=0.2,
-        timeout_seconds=10, max_retries=0,
+        provider=ModelProvider.GROQ,
+        model=name,
+        temperature=0.2,
+        timeout_seconds=10,
+        max_retries=0,
     )
 
 
 def routed(*models: ScriptedModel) -> LLM:
-    return LLM(AgentRole.VALIDATOR, [
-        RoutedModel(candidate(model.name), model) for model in models  # type: ignore[arg-type]
-    ])
+    return LLM(
+        AgentRole.VALIDATOR,
+        [
+            RoutedModel(candidate(model.name), model)
+            for model in models  # type: ignore[arg-type]
+        ],
+    )
 
 
 @pytest.mark.unit
@@ -58,7 +65,9 @@ def test_preflight_normalizes_valid_input(query: str, expected: str) -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(("query", "code"), [(" \t\n", "empty_query"), ("x" * 2001, "query_too_long")])
+@pytest.mark.parametrize(
+    ("query", "code"), [(" \t\n", "empty_query"), ("x" * 2001, "query_too_long")]
+)
 def test_preflight_rejects_invalid_input(query: str, code: str) -> None:
     with pytest.raises(InputValidationError) as raised:
         preflight_input(InputValidationRequest(original_query=query))
@@ -74,7 +83,9 @@ def test_example_config_is_a_complete_loadable_template(tmp_path: Path) -> None:
     (config_dir / "development.toml").write_text(source.read_text(), encoding="utf-8")
 
     settings = load_application_config(
-        "development", config_dir=config_dir, env_file=tmp_path / ".env",
+        "development",
+        config_dir=config_dir,
+        env_file=tmp_path / ".env",
         environ={"OPENAI_API_KEY": "placeholder"},
     )
 
@@ -83,7 +94,9 @@ def test_example_config_is_a_complete_loadable_template(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Gradio credentials are required"):
         load_application_config(
-            "development", config_dir=config_dir, env_file=tmp_path / ".env",
+            "development",
+            config_dir=config_dir,
+            env_file=tmp_path / ".env",
             environ={"OPENAI_API_KEY": "placeholder", "REQUIRE_AUTHENTICATION": "1"},
         )
 

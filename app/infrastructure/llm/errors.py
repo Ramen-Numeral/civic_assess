@@ -21,13 +21,15 @@ class FailureKind(StrEnum):
     UNKNOWN = "unknown"
 
 
-FALLBACK_FAILURES = frozenset({
-    FailureKind.TIMEOUT,
-    FailureKind.CONNECTION,
-    FailureKind.RATE_LIMIT,
-    FailureKind.UNAVAILABLE,
-    FailureKind.INVALID_OUTPUT,
-})
+FALLBACK_FAILURES = frozenset(
+    {
+        FailureKind.TIMEOUT,
+        FailureKind.CONNECTION,
+        FailureKind.RATE_LIMIT,
+        FailureKind.UNAVAILABLE,
+        FailureKind.INVALID_OUTPUT,
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -63,7 +65,9 @@ def classify_failure(provider: ModelProvider, exc: Exception) -> LLMFailure:
         kind = FailureKind.RATE_LIMIT
     elif isinstance(exc, (ValidationError, SDKS[provider].APIResponseValidationError)):
         kind = FailureKind.INVALID_OUTPUT
-    elif provider is ModelProvider.ANTHROPIC and isinstance(exc, anthropic.RetryableError):
+    elif provider is ModelProvider.ANTHROPIC and isinstance(
+        exc, anthropic.RetryableError
+    ):
         kind = FailureKind.UNAVAILABLE
     elif isinstance(exc, SDKS[provider].APIStatusError):
         if status == 408:
@@ -82,7 +86,9 @@ def classify_failure(provider: ModelProvider, exc: Exception) -> LLMFailure:
             kind = FailureKind.UNKNOWN
     else:
         kind = FailureKind.UNKNOWN
-    return LLMFailure(kind, type(exc).__name__, status if isinstance(status, int) else None)
+    return LLMFailure(
+        kind, type(exc).__name__, status if isinstance(status, int) else None
+    )
 
 
 def _is_tool_output_failure(provider: ModelProvider, exc: Exception) -> bool:

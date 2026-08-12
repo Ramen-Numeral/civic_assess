@@ -9,8 +9,8 @@ from app.domain.research import (
     DiversifiedResearchQuery,
     OriginalResearchQuery,
     ResearchPlan,
-    ResearchRequirement,
     ResearchQuerySet,
+    ResearchRequirement,
     TemporalScope,
 )
 from app.features.query_diversification.errors import (
@@ -18,15 +18,14 @@ from app.features.query_diversification.errors import (
     QueryDiversificationError,
 )
 from app.features.query_diversification.schemas import (
-    GapQueryPlanningProposal,
     GapDirectedQueryPlanningRequest,
+    GapQueryPlanningProposal,
     InitialResearchPlanProposal,
     QueryDiversificationRequest,
 )
 from app.infrastructure.llm.client import LLMClient
 from app.infrastructure.llm.errors import FailureKind, LLMError
 from app.prompts.base import Prompt
-
 
 QUANTITY = re.compile(
     r"(?<!\w)(?:"
@@ -36,11 +35,11 @@ QUANTITY = re.compile(
     r"|\d+\s*(?:%|percent|thousand|million|billion|trillion)"
     r"|\d{5,}"
     r")",
-    re.I,
+    re.IGNORECASE,
 )
 MAGNITUDE = re.compile(r"\s+")
 QUESTION = re.compile(r"\?+")
-URL_OR_MARKDOWN_LINK = re.compile(r"https?://|www\.|\[[^\]]+\]\([^)]+\)", re.I)
+URL_OR_MARKDOWN_LINK = re.compile(r"https?://|www\.|\[[^\]]+\]\([^)]+\)", re.IGNORECASE)
 LOGGER = logging.getLogger(__name__)
 
 
@@ -97,12 +96,19 @@ class QueryDiversificationService:
                     "Initial research plan failed validation; retrying",
                     extra={"event": "research.plan.contract_repair"},
                 )
-                messages = [*messages, HumanMessage(content=json.dumps({
-                    "validation_feedback": (
-                        f"{exc}. Correct the plan without adding facts, figures, "
-                        "links, or scope absent from the validated query."
+                messages = [
+                    *messages,
+                    HumanMessage(
+                        content=json.dumps(
+                            {
+                                "validation_feedback": (
+                                    f"{exc}. Correct the plan without adding facts, figures, "
+                                    "links, or scope absent from the validated query."
+                                ),
+                            }
+                        )
                     ),
-                }))]
+                ]
         priority = sorted(
             range(len(proposal.requirements)),
             key=lambda index: -len(proposal.requirements[index].evidence_angles),
@@ -121,19 +127,27 @@ class QueryDiversificationService:
             if len(selected) == before:
                 break
         selected = [
-            (index, angle.model_copy(
-                update={"text": _with_spans(angle.text, scope.spans)},
-            ))
+            (
+                index,
+                angle.model_copy(
+                    update={"text": _with_spans(angle.text, scope.spans)},
+                ),
+            )
             for index, angle in selected
         ]
         queries = tuple(angle for _, angle in selected)
         try:
             self._validate_queries(
-                request.validated_query, queries, request.validated_query, minimum=1,
+                request.validated_query,
+                queries,
+                request.validated_query,
+                minimum=1,
             )
         except InvalidQueryDiversificationError:
-            LOGGER.warning("Initial query plan degraded to direct evidence",
-                           extra={"event": "research.plan.direct_fallback"})
+            LOGGER.warning(
+                "Initial query plan degraded to direct evidence",
+                extra={"event": "research.plan.direct_fallback"},
+            )
             return self._direct_evidence_plan(request.validated_query, scope)
         requirement_ids = tuple(uuid4() for _ in proposal.requirements)
         retained = [[] for _ in proposal.requirements]
@@ -146,18 +160,26 @@ class QueryDiversificationService:
                 evidence_expectation=proposed.evidence_expectation,
                 evidence_angles=tuple(retained[index]),
             )
-            for index, (requirement_id, proposed) in enumerate(zip(
-                requirement_ids, proposal.requirements, strict=True,
-            ))
+            for index, (requirement_id, proposed) in enumerate(
+                zip(
+                    requirement_ids,
+                    proposal.requirements,
+                    strict=True,
+                )
+            )
         )
-        diversified = tuple(DiversifiedResearchQuery(
-            query_id=uuid4(),
-            requirement_ids=(requirement_ids[index],),
-            evidence_angle=angle.description,
-            text=angle.text,
-        ) for index, angle in selected)
+        diversified = tuple(
+            DiversifiedResearchQuery(
+                query_id=uuid4(),
+                requirement_ids=(requirement_ids[index],),
+                evidence_angle=angle.description,
+                text=angle.text,
+            )
+            for index, angle in selected
+        )
         original_query = OriginalResearchQuery(
-            query_id=uuid4(), text=request.validated_query,
+            query_id=uuid4(),
+            text=request.validated_query,
         )
         return ResearchPlan(
             requirements=requirements,
@@ -170,22 +192,30 @@ class QueryDiversificationService:
 
     @staticmethod
     def _direct_evidence_plan(
-        query: str, temporal_scope: TemporalScope | None = None,
+        query: str,
+        temporal_scope: TemporalScope | None = None,
     ) -> ResearchPlan:
         scope = temporal_scope or TemporalScope()
         requirement_id = uuid4()
         angle = "Direct evidence for the query as asked."
         return ResearchPlan(
-            requirements=(ResearchRequirement(
-                requirement_id=requirement_id, description=query,
-                evidence_angles=(angle,),
-            ),),
+            requirements=(
+                ResearchRequirement(
+                    requirement_id=requirement_id,
+                    description=query,
+                    evidence_angles=(angle,),
+                ),
+            ),
             query_set=ResearchQuerySet(
                 original_query=OriginalResearchQuery(query_id=uuid4(), text=query),
-                diversified_queries=(DiversifiedResearchQuery(
-                    query_id=uuid4(), requirement_ids=(requirement_id,),
-                    evidence_angle=angle, text=_with_spans(query, scope.spans),
-                ),),
+                diversified_queries=(
+                    DiversifiedResearchQuery(
+                        query_id=uuid4(),
+                        requirement_ids=(requirement_id,),
+                        evidence_angle=angle,
+                        text=_with_spans(query, scope.spans),
+                    ),
+                ),
             ),
             temporal_scope=scope,
         )
@@ -198,82 +228,117 @@ class QueryDiversificationService:
             requirement.requirement_id: requirement
             for requirement in request.requirements
         }
-        gaps = {
-            f"G{position}": gap
-            for position, gap in enumerate(request.gaps, 1)
-        }
+        gaps = {f"G{position}": gap for position, gap in enumerate(request.gaps, 1)}
         messages = [
-            SystemMessage(content=self._gap_prompt.build(
-                diversified_query_count=self._query_count,
-            )),
-            HumanMessage(content=json.dumps({
-                "canonical_query": request.original_query.text,
-                "temporal_scope": list(request.temporal_scope.spans),
-                "gaps": [{
-                    "ref": ref,
-                    "requirement": requirements[gap.requirement_id].description,
-                    "evidence_expectation": requirements[
-                        gap.requirement_id
-                    ].evidence_expectation,
-                    "investigated_angles": list(
-                        requirements[gap.requirement_id].evidence_angles
-                    ),
-                    "description": gap.description,
-                    "missing_evidence": gap.missing_evidence,
-                } for ref, gap in gaps.items()],
-            }, ensure_ascii=False)),
+            SystemMessage(
+                content=self._gap_prompt.build(
+                    diversified_query_count=self._query_count,
+                )
+            ),
+            HumanMessage(
+                content=json.dumps(
+                    {
+                        "canonical_query": request.original_query.text,
+                        "temporal_scope": list(request.temporal_scope.spans),
+                        "gaps": [
+                            {
+                                "ref": ref,
+                                "requirement": requirements[
+                                    gap.requirement_id
+                                ].description,
+                                "evidence_expectation": requirements[
+                                    gap.requirement_id
+                                ].evidence_expectation,
+                                "investigated_angles": list(
+                                    requirements[gap.requirement_id].evidence_angles
+                                ),
+                                "description": gap.description,
+                                "missing_evidence": gap.missing_evidence,
+                            }
+                            for ref, gap in gaps.items()
+                        ],
+                    },
+                    ensure_ascii=False,
+                )
+            ),
         ]
         proposal = await self._propose(messages, GapQueryPlanningProposal)
-        allowed_text = " ".join([
-            request.original_query.text,
-            *(requirement.description for requirement in request.requirements),
-            *(
-                requirement.evidence_expectation
-                for requirement in request.requirements
-                if requirement.evidence_expectation is not None
-            ),
-            *(
-                angle
-                for requirement in request.requirements
-                for angle in requirement.evidence_angles
-            ),
-            *(value for gap in request.gaps for value in (
-                gap.description, gap.missing_evidence,
-            )),
-        ])
+        allowed_text = " ".join(
+            [
+                request.original_query.text,
+                *(requirement.description for requirement in request.requirements),
+                *(
+                    requirement.evidence_expectation
+                    for requirement in request.requirements
+                    if requirement.evidence_expectation is not None
+                ),
+                *(
+                    angle
+                    for requirement in request.requirements
+                    for angle in requirement.evidence_angles
+                ),
+                *(
+                    value
+                    for gap in request.gaps
+                    for value in (
+                        gap.description,
+                        gap.missing_evidence,
+                    )
+                ),
+            ]
+        )
         queries = self._usable_gap_queries(
-            proposal.queries, gaps, request.original_query.text, allowed_text,
+            proposal.queries,
+            gaps,
+            request.original_query.text,
+            allowed_text,
             request.temporal_scope,
         )
         if not queries:
-            retry = [*messages, HumanMessage(content=json.dumps({
-                "validation_feedback": (
-                    "No proposed query was usable. Return only valid, distinct "
-                    "gap-targeted queries using the supplied gap references."
+            retry = [
+                *messages,
+                HumanMessage(
+                    content=json.dumps(
+                        {
+                            "validation_feedback": (
+                                "No proposed query was usable. Return only valid, distinct "
+                                "gap-targeted queries using the supplied gap references."
+                            ),
+                        }
+                    )
                 ),
-            }))]
+            ]
             proposal = await self._propose(retry, GapQueryPlanningProposal)
             queries = self._usable_gap_queries(
-                proposal.queries, gaps, request.original_query.text, allowed_text,
+                proposal.queries,
+                gaps,
+                request.original_query.text,
+                allowed_text,
                 request.temporal_scope,
             )
         diversified = []
         for text, refs in queries:
             targeted = tuple(gaps[ref] for ref in refs)
-            diversified.append(DiversifiedResearchQuery(
-                query_id=uuid4(),
-                requirement_ids=tuple(dict.fromkeys(
-                    gap.requirement_id for gap in targeted
-                )),
-                text=text,
-            ))
+            diversified.append(
+                DiversifiedResearchQuery(
+                    query_id=uuid4(),
+                    requirement_ids=tuple(
+                        dict.fromkeys(gap.requirement_id for gap in targeted)
+                    ),
+                    text=text,
+                )
+            )
         return ResearchQuerySet(
             original_query=request.original_query,
             diversified_queries=tuple(diversified),
         )
 
     def _usable_gap_queries(
-        self, queries, gaps, original_query: str, allowed_text: str,
+        self,
+        queries,
+        gaps,
+        original_query: str,
+        allowed_text: str,
         temporal_scope: TemporalScope,
     ) -> tuple[tuple[str, tuple[str, ...]], ...]:
         original = _normalize(original_query)
@@ -283,10 +348,14 @@ class QueryDiversificationService:
         for query in queries:
             key = _normalize(query.text)
             refs = tuple(dict.fromkeys(ref for ref in query.gap_refs if ref in gaps))
-            if (not key or not refs or key == original
-                    or URL_OR_MARKDOWN_LINK.search(query.text)
-                    or not _quantities(query.text) <= allowed_quantities
-                    or not all(span in key for span in required_time)):
+            if (
+                not key
+                or not refs
+                or key == original
+                or URL_OR_MARKDOWN_LINK.search(query.text)
+                or not _quantities(query.text) <= allowed_quantities
+                or not all(span in key for span in required_time)
+            ):
                 continue
             if key in deduped:
                 text, prior = deduped[key]
@@ -302,8 +371,14 @@ class QueryDiversificationService:
         selected = []
         while candidates and len(selected) < self._query_count:
             for ref in priority:
-                match = next((index for index, (_, refs) in enumerate(candidates)
-                              if ref in refs), None)
+                match = next(
+                    (
+                        index
+                        for index, (_, refs) in enumerate(candidates)
+                        if ref in refs
+                    ),
+                    None,
+                )
                 if match is not None:
                     selected.append(candidates.pop(match))
                     if len(selected) == self._query_count:
@@ -315,8 +390,7 @@ class QueryDiversificationService:
             return await self._llm.invoke_structured(messages, schema)
         except LLMError as exc:
             if exc.failures and all(
-                failure.kind is FailureKind.INVALID_OUTPUT
-                for failure in exc.failures
+                failure.kind is FailureKind.INVALID_OUTPUT for failure in exc.failures
             ):
                 raise InvalidQueryDiversificationError(
                     "Diversifier returned invalid structured output"
@@ -350,9 +424,7 @@ class QueryDiversificationService:
     def _verbatim_scope(proposal, allowed_text: str) -> TemporalScope:
         allowed = _normalize(allowed_text)
         spans = tuple(_normalize(span) for span in proposal.temporal_scope.spans)
-        if len(spans) != len(set(spans)) or not all(
-            span in allowed for span in spans
-        ):
+        if len(spans) != len(set(spans)) or not all(span in allowed for span in spans):
             raise InvalidQueryDiversificationError(
                 "Temporal scope must be copied verbatim from the validated query"
             )
@@ -384,8 +456,7 @@ class QueryDiversificationService:
                 "Initial research plans require at least two evidence angles"
             )
         requirements = [
-            _normalize(requirement.description)
-            for requirement in proposal.requirements
+            _normalize(requirement.description) for requirement in proposal.requirements
         ]
         if len(requirements) != len(set(requirements)):
             raise InvalidQueryDiversificationError(
@@ -393,8 +464,7 @@ class QueryDiversificationService:
             )
         for requirement in proposal.requirements:
             descriptions = [
-                _normalize(angle.description)
-                for angle in requirement.evidence_angles
+                _normalize(angle.description) for angle in requirement.evidence_angles
             ]
             if len(descriptions) != len(set(descriptions)):
                 raise InvalidQueryDiversificationError(
@@ -448,7 +518,8 @@ def _normalize(value: str) -> str:
 def _with_spans(text: str, spans: tuple[str, ...]) -> str:
     normalized = _normalize(text)
     missing = [
-        span for span in spans
+        span
+        for span in spans
         if _normalize(span) and _normalize(span) not in normalized
     ]
     return " ".join([text.strip(), *missing]) if missing else text

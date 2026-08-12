@@ -29,8 +29,7 @@ def determine_disposition(analysis: InputGateAnalysis) -> Disposition:
     if analysis.behavior is BehaviorAssessment.DISALLOWED:
         return Disposition.REFUSE
     if (
-        analysis.instruction_integrity
-        is InstructionIntegrityAssessment.AMBIGUOUS
+        analysis.instruction_integrity is InstructionIntegrityAssessment.AMBIGUOUS
         or analysis.behavior
         in {
             BehaviorAssessment.REQUIRES_NEUTRAL_REFRAME,

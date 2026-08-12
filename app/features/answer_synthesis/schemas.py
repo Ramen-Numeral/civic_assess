@@ -7,7 +7,6 @@ from app.domain.research import TemporalScope
 from app.domain.validation import NonBlankText
 from app.features.evidence.models import EvidenceBasis, EvidenceCandidate, SourceFitness
 
-
 FindingRef = Annotated[str, StringConstraints(pattern=r"^F[1-9]\d*$")]
 ParagraphRef = Annotated[str, StringConstraints(pattern=r"^P[1-9]\d*$")]
 
@@ -36,7 +35,8 @@ class GroundedAnswerRequest(BaseModel):
         available = {item.chunk_id for item in self.evidence}
         if len(available) != len(self.evidence) or any(
             chunk not in available
-            for finding in self.findings for chunk in finding.supporting_chunk_ids
+            for finding in self.findings
+            for chunk in finding.supporting_chunk_ids
         ):
             raise ValueError("Answer findings require unique available evidence")
         return self

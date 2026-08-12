@@ -1,16 +1,16 @@
-from dataclasses import dataclass
 from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import (
     AwareDatetime,
     BaseModel,
-    computed_field,
     ConfigDict,
     Field,
     HttpUrl,
     StringConstraints,
+    computed_field,
 )
 
 from app.domain.evidence import EvidenceChunk, EvidenceDocument
@@ -160,8 +160,7 @@ class RequirementFinding(BaseModel):
         if len(set(self.supporting_chunk_ids)) != len(self.supporting_chunk_ids):
             raise ValueError("Finding support must be unique")
         if (
-            self.evidence_basis == "projected"
-            or self.source_fitness == "qualified"
+            self.evidence_basis == "projected" or self.source_fitness == "qualified"
         ) and self.qualification is None:
             raise ValueError("Projected or qualified findings need a qualification")
 
@@ -183,13 +182,9 @@ class EvidenceCoverageAssessment(BaseModel):
     def model_post_init(self, __context: object) -> None:
         if not self.findings and not self.gaps:
             raise ValueError("Coverage requires a finding or gap")
-        if _duplicates(
-            (item.requirement_id, item.statement) for item in self.findings
-        ):
+        if _duplicates((item.requirement_id, item.statement) for item in self.findings):
             raise ValueError("Requirement findings must be distinct")
-        if _duplicates(
-            (item.requirement_id, item.description) for item in self.gaps
-        ):
+        if _duplicates((item.requirement_id, item.description) for item in self.gaps):
             raise ValueError("Evidence gaps must be distinct")
 
     @computed_field

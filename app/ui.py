@@ -110,6 +110,7 @@ def build_ui(
 ) -> gr.Blocks:
     if concurrency_limit < 1:
         raise ValueError("UI concurrency limit must be positive")
+
     def capture_message(value: str) -> tuple[str, str]:
         return value, ""
 
@@ -131,7 +132,9 @@ def build_ui(
         current.append({"role": "user", "content": query})
         activity = "Preparing request"
         pulse = 0
-        current.append({"role": "assistant", "content": _working_content(activity, pulse)})
+        current.append(
+            {"role": "assistant", "content": _working_content(activity, pulse)}
+        )
         steps: list[TraceStep] = []
         active_step: TraceStep | None = None
         yield list(current), conversation_id, _render_trace([])
@@ -157,13 +160,19 @@ def build_ui(
                             "role": "assistant",
                             "content": _working_content(activity, pulse),
                         }
-                        yield list(current), conversation_id, _render_trace(
-                            (*steps, active_step) if active_step else steps
+                        yield (
+                            list(current),
+                            conversation_id,
+                            _render_trace(
+                                (*steps, active_step) if active_step else steps
+                            ),
                         )
                         continue
                     if isinstance(event, LLMAttemptMetrics):
                         if event.role.value == "evidence_coverage":
-                            steps.append(TraceStep("Local evidence search", "completed"))
+                            steps.append(
+                                TraceStep("Local evidence search", "completed")
+                            )
                         steps.append(_call_step(event))
                     else:
                         activity = WORKING_LABELS.get(event.phase.value, activity)
@@ -178,8 +187,10 @@ def build_ui(
                         "role": "assistant",
                         "content": _working_content(activity, pulse),
                     }
-                    yield list(current), conversation_id, _render_trace(
-                        (*steps, active_step) if active_step else steps
+                    yield (
+                        list(current),
+                        conversation_id,
+                        _render_trace((*steps, active_step) if active_step else steps),
                     )
                 result = await task
             except Exception as exc:
@@ -303,7 +314,9 @@ def _render_trace(steps: Iterable[TraceStep]) -> str:
     }
     for index, step in enumerate(items, 1):
         status = step.status if step.status in statuses else "waiting"
-        duration = f" · {step.duration_ms:.0f} ms" if step.duration_ms is not None else ""
+        duration = (
+            f" · {step.duration_ms:.0f} ms" if step.duration_ms is not None else ""
+        )
         rows.extend((f"**{index}. {step.label}**", f"{statuses[status]}{duration}"))
         if step.detail:
             rows.append(step.detail)
@@ -321,8 +334,10 @@ def _render_trace(steps: Iterable[TraceStep]) -> str:
 
 def _safe_error(exc: Exception) -> str:
     message = getattr(exc, "safe_message", None)
-    return message if isinstance(message, str) else (
-        "The request could not be completed. Please try again."
+    return (
+        message
+        if isinstance(message, str)
+        else ("The request could not be completed. Please try again.")
     )
 
 

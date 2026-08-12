@@ -1,7 +1,7 @@
 from collections import Counter, defaultdict
+from collections.abc import Iterable
 from pathlib import Path
 from statistics import median
-from typing import Iterable
 
 from app.domain.validation import Disposition, InputGateAnalysis, InputGateResult
 from app.features.answer_synthesis.renderer import cited_sources
@@ -10,7 +10,8 @@ from evals.models import RequestRoutingRun, RubricRun, ScenarioTurn
 
 
 def write_request_routing_report(
-    runs: tuple[RequestRoutingRun, ...], output: Path,
+    runs: tuple[RequestRoutingRun, ...],
+    output: Path,
 ) -> None:
     output.mkdir(parents=True, exist_ok=True)
     grouped = _group_routing_runs(runs)
@@ -94,7 +95,11 @@ def write_request_routing_report(
             for run, expected, modal, modal_count, _ in rows
         ),
     ]
-    differences = [row for row in rows if row[1] != row[2] or row[3] != len(grouped[row[0].case.case_id])]
+    differences = [
+        row
+        for row in rows
+        if row[1] != row[2] or row[3] != len(grouped[row[0].case.case_id])
+    ]
     lines += ["", "## Classification differences", ""]
     if differences:
         for run, expected, modal, modal_count, _ in differences:
@@ -117,17 +122,24 @@ def write_request_routing_report(
                 for run, _, _, _, proposal in reframes
             ),
         ]
-    lines += ["", "## Runtime", "", *_usage_lines(_usage(runs), [run.wall_clock_ms for run in runs])]
+    lines += [
+        "",
+        "## Runtime",
+        "",
+        *_usage_lines(_usage(runs), [run.wall_clock_ms for run in runs]),
+    ]
     (output / "request_routing.md").write_text("\n".join(lines) + "\n")
 
 
 def write_rubric_report(runs: tuple[RubricRun, ...], output: Path) -> None:
     output.mkdir(parents=True, exist_ok=True)
     evaluated = [
-        (run, [(turn, _evaluate_turn(turn)) for turn in run.turns])
-        for run in runs
+        (run, [(turn, _evaluate_turn(turn)) for turn in run.turns]) for run in runs
     ]
-    passed = sum(all(all(result for _, result in checks) for _, checks in turns) for _, turns in evaluated)
+    passed = sum(
+        all(all(result for _, result in checks) for _, checks in turns)
+        for _, turns in evaluated
+    )
     lines = [
         "# Scenario Evaluation",
         "",
@@ -158,10 +170,22 @@ def write_rubric_report(runs: tuple[RubricRun, ...], output: Path) -> None:
         for index, (turn, checks) in enumerate(turns, 1):
             state = _state(turn)
             research, answer = state.get("research_result"), state.get("answer_result")
-            quality = answer.final_audit.answer_quality if answer and answer.final_audit else None
-            sources = len(cited_sources(answer.draft, research.cumulative_evidence)) if answer and research else 0
+            quality = (
+                answer.final_audit.answer_quality
+                if answer and answer.final_audit
+                else None
+            )
+            sources = (
+                len(cited_sources(answer.draft, research.cumulative_evidence))
+                if answer and research
+                else 0
+            )
             gaps = len(research.cumulative_coverage.gaps) if research else 0
-            angles = sum(len(item.evidence_angles) for item in research.plan.requirements) if research else 0
+            angles = (
+                sum(len(item.evidence_angles) for item in research.plan.requirements)
+                if research
+                else 0
+            )
             lines += [
                 "",
                 f"### Turn {index}",
@@ -170,7 +194,10 @@ def write_rubric_report(runs: tuple[RubricRun, ...], output: Path) -> None:
                 "",
                 "| Check | Result |",
                 "|---|---|",
-                *(f"| {_cell(label)} | {'PASS' if result else 'FAIL'} |" for label, result in checks),
+                *(
+                    f"| {_cell(label)} | {'PASS' if result else 'FAIL'} |"
+                    for label, result in checks
+                ),
                 "",
                 f"**Observed:** route `{_turn_route(turn)}` · {sources} cited sources · "
                 f"answer quality {quality if quality is not None else 'n/a'}/5 · "
@@ -179,11 +206,18 @@ def write_rubric_report(runs: tuple[RubricRun, ...], output: Path) -> None:
                 "",
                 "### Response",
                 "",
-                turn.result.response_text if turn.result and turn.result.response_text else "No response was produced.",
+                turn.result.response_text
+                if turn.result and turn.result.response_text
+                else "No response was produced.",
             ]
             if turn.error_code:
                 lines += ["", f"**Error:** `{turn.error_code}` — {turn.error_message}"]
-    lines += ["", "## Runtime", "", *_usage_lines(_usage(runs), [run.wall_clock_ms for run in runs])]
+    lines += [
+        "",
+        "## Runtime",
+        "",
+        *_usage_lines(_usage(runs), [run.wall_clock_ms for run in runs]),
+    ]
     (output / "rubric_scenarios.md").write_text("\n".join(lines) + "\n")
 
 
@@ -192,17 +226,47 @@ def _evaluate_turn(turn: ScenarioTurn) -> list[tuple[str, bool]]:
     research, answer = state.get("research_result"), state.get("answer_result")
     checks = [(f"Route is `{expected.route}`", _turn_route(turn) == expected.route)]
     if expected.minimum_sources:
-        count = len(cited_sources(answer.draft, research.cumulative_evidence)) if answer and research else 0
-        checks.append((f"At least {expected.minimum_sources} cited sources ({count})", count >= expected.minimum_sources))
+        count = (
+            len(cited_sources(answer.draft, research.cumulative_evidence))
+            if answer and research
+            else 0
+        )
+        checks.append(
+            (
+                f"At least {expected.minimum_sources} cited sources ({count})",
+                count >= expected.minimum_sources,
+            )
+        )
     if expected.minimum_answer_quality:
-        quality = answer.final_audit.answer_quality if answer and answer.final_audit else 0
-        checks.append((f"Answer audit at least {expected.minimum_answer_quality}/5 ({quality}/5)", quality >= expected.minimum_answer_quality))
+        quality = (
+            answer.final_audit.answer_quality if answer and answer.final_audit else 0
+        )
+        checks.append(
+            (
+                f"Answer audit at least {expected.minimum_answer_quality}/5 ({quality}/5)",
+                quality >= expected.minimum_answer_quality,
+            )
+        )
     if expected.maximum_unresolved_gaps is not None:
         gaps = len(research.cumulative_coverage.gaps) if research else 0
-        checks.append((f"At most {expected.maximum_unresolved_gaps} unresolved gaps ({gaps})", gaps <= expected.maximum_unresolved_gaps))
+        checks.append(
+            (
+                f"At most {expected.maximum_unresolved_gaps} unresolved gaps ({gaps})",
+                gaps <= expected.maximum_unresolved_gaps,
+            )
+        )
     if expected.minimum_evidence_angles:
-        angles = sum(len(item.evidence_angles) for item in research.plan.requirements) if research else 0
-        checks.append((f"At least {expected.minimum_evidence_angles} evidence angles ({angles})", angles >= expected.minimum_evidence_angles))
+        angles = (
+            sum(len(item.evidence_angles) for item in research.plan.requirements)
+            if research
+            else 0
+        )
+        checks.append(
+            (
+                f"At least {expected.minimum_evidence_angles} evidence angles ({angles})",
+                angles >= expected.minimum_evidence_angles,
+            )
+        )
     return checks
 
 
@@ -233,7 +297,10 @@ def _group_routing_runs(
 
 
 def _expected(run: RequestRoutingRun) -> dict[str, str]:
-    return {**_analysis(run.case.expected), "disposition": run.case.expected_disposition.value}
+    return {
+        **_analysis(run.case.expected),
+        "disposition": run.case.expected_disposition.value,
+    }
 
 
 def _observed(result: InputGateResult) -> dict[str, str]:
@@ -261,9 +328,12 @@ def _route(value: dict[str, str]) -> str:
 
 
 def _usage_lines(
-    attempts: tuple[LLMAttemptMetrics, ...], times: list[float],
+    attempts: tuple[LLMAttemptMetrics, ...],
+    times: list[float],
 ) -> list[str]:
-    reported = [item for item in attempts if item.token_source is TokenSource.PROVIDER_REPORTED]
+    reported = [
+        item for item in attempts if item.token_source is TokenSource.PROVIDER_REPORTED
+    ]
     total_tokens = sum(item.total_tokens or 0 for item in reported)
     failures = sum(item.outcome != "success" for item in attempts)
     fallbacks = sum(item.fallback_triggered for item in attempts)
@@ -274,7 +344,9 @@ def _usage_lines(
     ]
 
 
-def _usage(runs: Iterable[RequestRoutingRun | RubricRun]) -> tuple[LLMAttemptMetrics, ...]:
+def _usage(
+    runs: Iterable[RequestRoutingRun | RubricRun],
+) -> tuple[LLMAttemptMetrics, ...]:
     return tuple(attempt for run in runs for attempt in run.usage)
 
 

@@ -3,24 +3,23 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from uuid import UUID, uuid5
 
+from app.domain.evidence import EvidenceDiscovery, EvidenceDocument
 from app.domain.research import (
     AcquiredSearchResult,
     QueryAcquisitionSuccess,
     ResearchAcquisitionSet,
+    ResearchQuerySet,
 )
-from app.domain.evidence import EvidenceDiscovery, EvidenceDocument
-from app.domain.research import ResearchQuerySet
 from app.features.evidence.canonicalization import canonicalize_url
 from app.features.evidence.chunking import MarkdownChunker
 from app.features.evidence.embedding import EvidenceEmbedder
 from app.features.evidence.errors import EvidenceIngestionError
-from app.features.evidence.normalization import has_substance, normalize_markdown
-from app.features.evidence.repository import EvidenceRepository
 from app.features.evidence.models import (
     EvidenceIngestionBatch,
     EvidenceIngestionSnapshot,
 )
-
+from app.features.evidence.normalization import has_substance, normalize_markdown
+from app.features.evidence.repository import EvidenceRepository
 
 DOCUMENT_NAMESPACE = UUID("7afe3980-f2a6-47f8-8310-1d2f9faf12dc")
 
@@ -50,8 +49,7 @@ class EvidenceIngestionService:
         queries = (query_set.original_query, *query_set.diversified_queries)
         expected = [(query.query_id, query.text) for query in queries]
         actual = [
-            (outcome.query_id, outcome.query_text)
-            for outcome in acquisition.outcomes
+            (outcome.query_id, outcome.query_text) for outcome in acquisition.outcomes
         ]
         if actual != expected:
             raise EvidenceIngestionError(
@@ -79,10 +77,13 @@ class EvidenceIngestionService:
         chunks = []
         for canonical_url, entries in grouped.items():
             usable = [
-                (entry, normalize_markdown(
-                    entry[2].raw_content,
-                    title=entry[2].title,
-                ))
+                (
+                    entry,
+                    normalize_markdown(
+                        entry[2].raw_content,
+                        title=entry[2].title,
+                    ),
+                )
                 for entry in entries
                 if entry[2].raw_content is not None
             ]

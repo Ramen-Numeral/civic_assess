@@ -6,7 +6,6 @@ from app.infrastructure.persistence.sqlite_evidence_repository import (
     SQLiteEvidenceRepository,
 )
 
-
 __all__ = [
     "SQLiteConversationRepository",
     "SQLiteDatabase",

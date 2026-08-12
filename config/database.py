@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SQLITE_DATABASE_PATH = PROJECT_ROOT / "data" / "civic_assess.sqlite3"
 

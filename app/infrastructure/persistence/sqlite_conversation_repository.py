@@ -111,10 +111,14 @@ class SQLiteConversationRepository(ConversationRepository):
         return await asyncio.to_thread(self._delete_conversation, conversation_id)
 
     async def discard_latest_user_turn(
-        self, conversation_id: UUID, turn_id: UUID,
+        self,
+        conversation_id: UUID,
+        turn_id: UUID,
     ) -> bool:
         return await asyncio.to_thread(
-            self._discard_latest_user_turn, conversation_id, turn_id,
+            self._discard_latest_user_turn,
+            conversation_id,
+            turn_id,
         )
 
     def _create_conversation(self, conversation: Conversation) -> None:
@@ -179,16 +183,11 @@ class SQLiteConversationRepository(ConversationRepository):
             if expected_revision is None:
                 if current_row is not None:
                     return StateWriteResult(StateWriteStatus.CONFLICT)
-            elif (
-                current_row is None
-                or current_row["revision"] != expected_revision
-            ):
+            elif current_row is None or current_row["revision"] != expected_revision:
                 return StateWriteResult(StateWriteStatus.CONFLICT)
 
             current_revision = (
-                int(current_row["revision"])
-                if current_row is not None
-                else 0
+                int(current_row["revision"]) if current_row is not None else 0
             )
             if snapshot.revision != current_revision + 1:
                 return StateWriteResult(StateWriteStatus.CONFLICT)
@@ -381,7 +380,9 @@ class SQLiteConversationRepository(ConversationRepository):
             return cursor.rowcount > 0
 
     def _discard_latest_user_turn(
-        self, conversation_id: UUID, turn_id: UUID,
+        self,
+        conversation_id: UUID,
+        turn_id: UUID,
     ) -> bool:
         with self._database.connect() as connection:
             cursor = connection.execute(

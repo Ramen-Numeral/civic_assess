@@ -22,7 +22,6 @@ from app.infrastructure.llm.client import LLMClient
 from app.infrastructure.llm.errors import FailureKind, LLMError
 from app.prompts.base import Prompt
 
-
 LOGGER = logging.getLogger(__name__)
 
 
@@ -60,9 +59,7 @@ class QueryReframeService:
                     {
                         "original_query": request.original_query,
                         "resolved_query": request.resolved_query,
-                        "gate_analysis": request.analysis.model_dump(
-                            mode="json"
-                        ),
+                        "gate_analysis": request.analysis.model_dump(mode="json"),
                     },
                     ensure_ascii=False,
                 )
@@ -87,8 +84,7 @@ class QueryReframeService:
             return proposal
         except LLMError as exc:
             if exc.failures and all(
-                failure.kind is FailureKind.INVALID_OUTPUT
-                for failure in exc.failures
+                failure.kind is FailureKind.INVALID_OUTPUT for failure in exc.failures
             ):
                 raise InvalidReframeProposalError(
                     "Reframer returned invalid structured output"

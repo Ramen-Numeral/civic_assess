@@ -4,7 +4,6 @@ import unicodedata
 from app.features.input_validation.errors import InputValidationError
 from app.features.input_validation.schemas import InputValidationRequest
 
-
 MAX_QUERY_LENGTH = 2000
 CONTROL_CHARS = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]")
 

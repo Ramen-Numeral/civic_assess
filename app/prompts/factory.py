@@ -5,7 +5,6 @@ from types import MappingProxyType
 from app.features.query_reframe.schemas import QueryReframeMode
 from app.prompts.base import Prompt
 
-
 PROMPT_DIR = Path(__file__).parent / "templates"
 QueryReframePrompts = Mapping[QueryReframeMode, Prompt]
 
@@ -27,10 +26,9 @@ def build_query_reframe_prompt(mode: QueryReframeMode) -> Prompt:
 
 
 def build_query_reframe_prompts() -> QueryReframePrompts:
-    return MappingProxyType({
-        mode: build_query_reframe_prompt(mode)
-        for mode in QueryReframeMode
-    })
+    return MappingProxyType(
+        {mode: build_query_reframe_prompt(mode) for mode in QueryReframeMode}
+    )
 
 
 def build_query_resolution_prompt() -> Prompt:

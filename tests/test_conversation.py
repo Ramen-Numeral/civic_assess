@@ -6,12 +6,14 @@ from uuid import uuid4
 
 import pytest
 
-from app.application.chat_interaction import ChatInteractionRequest, ChatInteractionService
+from app.application.chat_interaction import (
+    ChatInteractionRequest,
+    ChatInteractionService,
+)
 from app.features.conversation import ConversationContextService, ConversationService
 from app.features.query_reframe.schemas import QueryReframeProposal
 from app.infrastructure.persistence import SQLiteConversationRepository, SQLiteDatabase
 from app.orchestration.state import ChatRoute
-
 
 pytestmark = [pytest.mark.integration, pytest.mark.regression]
 
@@ -28,7 +30,8 @@ def service(path: Path, orchestrator):
 def request(conversation_id, *, message_id=None, message="Question"):
     return ChatInteractionRequest(
         conversation_id=conversation_id,
-        client_message_id=message_id or uuid4(), message=message,
+        client_message_id=message_id or uuid4(),
+        message=message,
     )
 
 
@@ -67,13 +70,23 @@ def test_failure_releases_lock_and_rolls_back_turn(tmp_path: Path) -> None:
         orchestrator = Orchestrator()
         interactions, _ = service(tmp_path / "locked.sqlite3", orchestrator)
         conversation = await interactions.create_conversation()
-        first = asyncio.create_task(interactions.interact(request(
-            conversation.conversation_id, message="First question",
-        )))
+        first = asyncio.create_task(
+            interactions.interact(
+                request(
+                    conversation.conversation_id,
+                    message="First question",
+                )
+            )
+        )
         await orchestrator.entered.wait()
-        second = asyncio.create_task(interactions.interact(request(
-            conversation.conversation_id, message="Second question",
-        )))
+        second = asyncio.create_task(
+            interactions.interact(
+                request(
+                    conversation.conversation_id,
+                    message="Second question",
+                )
+            )
+        )
         await asyncio.sleep(0)
         assert orchestrator.calls == 1
         orchestrator.release.set()
@@ -104,7 +117,10 @@ def test_different_conversations_run_concurrently(tmp_path: Path) -> None:
     async def scenario():
         orchestrator = Orchestrator()
         interactions, _ = service(tmp_path / "parallel.sqlite3", orchestrator)
-        first, second = await interactions.create_conversation(), await interactions.create_conversation()
+        first, second = (
+            await interactions.create_conversation(),
+            await interactions.create_conversation(),
+        )
         tasks = [
             asyncio.create_task(interactions.interact(request(first.conversation_id))),
             asyncio.create_task(interactions.interact(request(second.conversation_id))),
@@ -120,10 +136,26 @@ def test_different_conversations_run_concurrently(tmp_path: Path) -> None:
 def test_yes_persists_canonical_reframe(tmp_path: Path) -> None:
     async def scenario():
         query = "What evidence bears on the policy?"
-        flow = [{"query_reframe_proposal": QueryReframeProposal(proposed_query=query), "chat_route": ChatRoute.AWAIT_APPROVAL}, {"answer_result": SimpleNamespace(text="Answer")}]
-        interactions, conversations = service(tmp_path / "reframe.sqlite3", SimpleNamespace(invoke=AsyncMock(side_effect=flow)))
+        flow = [
+            {
+                "query_reframe_proposal": QueryReframeProposal(proposed_query=query),
+                "chat_route": ChatRoute.AWAIT_APPROVAL,
+            },
+            {"answer_result": SimpleNamespace(text="Answer")},
+        ]
+        interactions, conversations = service(
+            tmp_path / "reframe.sqlite3",
+            SimpleNamespace(invoke=AsyncMock(side_effect=flow)),
+        )
         conversation = await interactions.create_conversation()
-        await interactions.interact(request(conversation.conversation_id, message="Biased question"))
-        await interactions.interact(request(conversation.conversation_id, message="Yes"))
-        assert (await conversations.list_turns(conversation.conversation_id))[-2].content == query
+        await interactions.interact(
+            request(conversation.conversation_id, message="Biased question")
+        )
+        await interactions.interact(
+            request(conversation.conversation_id, message="Yes")
+        )
+        assert (await conversations.list_turns(conversation.conversation_id))[
+            -2
+        ].content == query
+
     asyncio.run(scenario())

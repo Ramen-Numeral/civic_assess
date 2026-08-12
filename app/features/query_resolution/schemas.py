@@ -2,9 +2,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, StringConstraints, model_validator
 
-from app.domain.conversation import ConversationContext, ContextEvidenceReference
+from app.domain.conversation import ContextEvidenceReference, ConversationContext
 from app.domain.validation import NonBlankText
-
 
 ClarificationQuestion = Annotated[
     str,
@@ -36,7 +35,5 @@ class QueryResolutionResult(BaseModel):
         resolved = self.resolved_query is not None
         clarification = self.clarification_question is not None
         if resolved == clarification:
-            raise ValueError(
-                "Resolution requires either a query or clarification"
-            )
+            raise ValueError("Resolution requires either a query or clarification")
         return self

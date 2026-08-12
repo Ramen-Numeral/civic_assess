@@ -1,9 +1,6 @@
 from typing import Literal
 
-
-QueryReframeErrorCode = Literal[
-    "reframer_unavailable",
-]
+QueryReframeErrorCode = Literal["reframer_unavailable",]
 
 
 class QueryReframeError(ValueError):

@@ -1,7 +1,6 @@
 from app.domain.validation import Disposition
 from app.orchestration.state import ChatRoute, ChatState
 
-
 REDIRECT_MESSAGE = (
     "I'm designed to help with politics, elections, government, public policy, "
     "civic participation, and public authority. This request falls outside that "

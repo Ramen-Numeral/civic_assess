@@ -1,6 +1,5 @@
 from typing import Literal
 
-
 QueryDiversificationErrorCode = Literal["diversifier_unavailable"]
 
 

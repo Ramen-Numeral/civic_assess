@@ -6,11 +6,10 @@ from uuid import UUID, uuid5
 
 from app.domain.evidence import EvidenceChunk
 
-
 CHUNK_NAMESPACE = UUID("585c20b7-9f06-44a0-a40a-e19cd6aee830")
-BLOCK = re.compile(r"\S(?:.*?\S)?(?=\n\s*\n|\Z)", re.S)
+BLOCK = re.compile(r"\S(?:.*?\S)?(?=\n\s*\n|\Z)", re.DOTALL)
 HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$")
-SENTENCE = re.compile(r".+?(?:[.!?](?=\s)|\Z)", re.S)
+SENTENCE = re.compile(r".+?(?:[.!?](?=\s)|\Z)", re.DOTALL)
 UNIT = re.compile(r"\S+")
 
 
@@ -60,9 +59,7 @@ class MarkdownChunker:
             elif current and combined > self._maximum:
                 if not groups or current[-1].end > groups[-1][-1].end:
                     groups.append(current)
-                available = self._maximum - self._count(
-                    content[span.start:span.end]
-                )
+                available = self._maximum - self._count(content[span.start : span.end])
                 current = self._overlap_spans(
                     content,
                     current,
@@ -72,14 +69,13 @@ class MarkdownChunker:
             if self._units(content, current) >= self._target:
                 groups.append(current)
                 current = self._overlap_spans(content, current)
-        if current and (
-            not groups or current[-1].end > groups[-1][-1].end
-        ):
+        if current and (not groups or current[-1].end > groups[-1][-1].end):
             groups.append(current)
         groups = self._merge_small_tail(content, groups)
         groups = self._merge_undersized(content, groups)
         groups = [
-            group for group in groups
+            group
+            for group in groups
             if self._units(content, group) >= self._substantive_minimum
         ]
         return tuple(
@@ -98,9 +94,7 @@ class MarkdownChunker:
             if self._units(content, candidate) >= self._minimum:
                 merged.append(candidate)
                 continue
-            if merged and self._units(
-                content, merged[-1] + candidate
-            ) <= self._maximum:
+            if merged and self._units(content, merged[-1] + candidate) <= self._maximum:
                 merged[-1] = merged[-1] + candidate
                 continue
             pending = candidate
@@ -115,33 +109,35 @@ class MarkdownChunker:
             heading = HEADING.match(match.group())
             if heading:
                 level = len(heading.group(1))
-                headings = headings[:level - 1] + [heading.group(2).strip()]
+                headings = headings[: level - 1] + [heading.group(2).strip()]
                 continue
             span = _Span(match.start(), match.end(), tuple(headings))
             spans.extend(self._split_oversized(content, span))
         return spans
 
     def _split_oversized(self, content: str, span: _Span) -> list[_Span]:
-        if self._count(content[span.start:span.end]) <= self._maximum:
+        if self._count(content[span.start : span.end]) <= self._maximum:
             return [span]
         sentences = [
             _Span(span.start + item.start(), span.start + item.end(), span.heading_path)
-            for item in SENTENCE.finditer(content[span.start:span.end])
+            for item in SENTENCE.finditer(content[span.start : span.end])
             if item.group().strip()
         ]
         result: list[_Span] = []
         for sentence in sentences:
-            if self._count(content[sentence.start:sentence.end]) <= self._maximum:
+            if self._count(content[sentence.start : sentence.end]) <= self._maximum:
                 result.append(sentence)
                 continue
-            units = self._unit_spans(content[sentence.start:sentence.end])
+            units = self._unit_spans(content[sentence.start : sentence.end])
             for offset in range(0, len(units), self._maximum):
-                window = units[offset:offset + self._maximum]
-                result.append(_Span(
-                    sentence.start + window[0][0],
-                    sentence.start + window[-1][1],
-                    span.heading_path,
-                ))
+                window = units[offset : offset + self._maximum]
+                result.append(
+                    _Span(
+                        sentence.start + window[0][0],
+                        sentence.start + window[-1][1],
+                        span.heading_path,
+                    )
+                )
         return result
 
     def _overlap_spans(
@@ -155,7 +151,7 @@ class MarkdownChunker:
         if overlap <= 0:
             return []
         last = spans[-1]
-        units = self._unit_spans(content[last.start:last.end])
+        units = self._unit_spans(content[last.start : last.end])
         if len(units) <= overlap:
             return [last]
         start = last.start + units[-overlap][0]
@@ -203,7 +199,7 @@ class MarkdownChunker:
     def _units(self, content: str, spans: list[_Span]) -> int:
         if not spans:
             return 0
-        return self._count(content[spans[0].start:spans[-1].end])
+        return self._count(content[spans[0].start : spans[-1].end])
 
     def _count(self, text: str) -> int:
         return len(self._unit_spans(text))

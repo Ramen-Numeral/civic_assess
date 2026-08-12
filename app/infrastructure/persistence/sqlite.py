@@ -3,7 +3,6 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 
@@ -20,9 +19,7 @@ class SQLiteDatabase:
         with self.connect() as connection:
             connection.execute("PRAGMA journal_mode = WAL")
             connection.executescript(
-                "BEGIN IMMEDIATE;\n"
-                f"{SCHEMA_PATH.read_text(encoding='utf-8')}\n"
-                "COMMIT;"
+                f"BEGIN IMMEDIATE;\n{SCHEMA_PATH.read_text(encoding='utf-8')}\nCOMMIT;"
             )
 
     @contextmanager

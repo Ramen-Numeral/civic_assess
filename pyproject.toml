@@ -25,7 +25,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest==9.1.1"]
+dev = ["pytest==9.1.1", "ruff==0.16.2"]
 
 [tool.setuptools.packages.find]
 include = ["app*", "config*", "evals*"]
@@ -42,10 +42,16 @@ markers = [
     "integration: test combining multiple production components without a full external workflow",
     "e2e: test exercising a complete user-visible workflow",
     "live: test requiring a real provider or external service",
-    "slow: test intentionally excluded from fast feedback because of material runtime",
     "evaluation: test assessing application output quality or behavior",
     "security: test of a security control or trust boundary",
     "smoke: small test checking that a critical path starts or assembles successfully",
     "regression: test preserving behavior for a previously discovered defect",
-    "performance: test measuring speed, throughput, memory, or another resource target",
 ]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+exclude = ["to_do", "evals/reports"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

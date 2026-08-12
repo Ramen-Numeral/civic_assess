@@ -6,21 +6,21 @@ from app.features.input_validation.service import InputValidationService
 from app.features.query_reframe.service import QueryReframeService
 from app.features.query_resolution.service import QueryResolutionService
 from app.observability.progress import ProgressEmitter
+from app.orchestration.answer import AnswerCoordinator
 from app.orchestration.instrumentation import (
     AgentNode,
     instrument_node,
     log_route,
 )
 from app.orchestration.nodes import (
+    build_answer_node,
     build_input_preflight_node,
     build_input_validation_node,
-    build_answer_node,
     build_query_reframe_node,
     build_query_resolution_node,
     build_research_node,
 )
 from app.orchestration.research import ResearchCoordinator
-from app.orchestration.answer import AnswerCoordinator
 from app.orchestration.state import ChatState
 from app.roles import AgentRole
 

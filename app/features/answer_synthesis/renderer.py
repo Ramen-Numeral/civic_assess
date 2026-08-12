@@ -5,13 +5,13 @@ from uuid import UUID
 from app.features.answer_synthesis.schemas import AnswerParagraph, NaturalAnswerDraft
 from app.features.evidence.models import EvidenceCandidate
 
-
 INLINE_EVIDENCE_REF = re.compile(r"\[\[E([1-9]\d*)\]\]")
 INLINE_EVIDENCE_RUN = re.compile(r"\[\[E[1-9]\d*\]\](?:\s*\[\[E[1-9]\d*\]\])*")
 
 
 def referenced_chunks(
-    paragraph: AnswerParagraph, evidence: tuple[EvidenceCandidate, ...],
+    paragraph: AnswerParagraph,
+    evidence: tuple[EvidenceCandidate, ...],
 ) -> list[UUID]:
     references = {str(i): item for i, item in enumerate(evidence, 1)}
     marked = [
@@ -24,7 +24,8 @@ def referenced_chunks(
 
 
 def cited_sources(
-    draft: NaturalAnswerDraft, evidence: tuple[EvidenceCandidate, ...],
+    draft: NaturalAnswerDraft,
+    evidence: tuple[EvidenceCandidate, ...],
 ) -> dict[str, list[UUID]]:
     available = {item.chunk_id: item for item in evidence}
     sources: dict[str, list[UUID]] = {}
@@ -55,6 +56,7 @@ def render_grounded_answer(
 
     paragraphs = []
     for item in draft.paragraphs:
+
         def citation(match, paragraph=item):
             resolved = {
                 numbers[str(source.canonical_url)]
@@ -63,12 +65,18 @@ def render_grounded_answer(
                 and source.chunk_id in paragraph.supporting_chunk_ids
             }
             return _anchors(sorted(resolved), urls)
+
         text = INLINE_EVIDENCE_RUN.sub(citation, item.text)
         if not any(f'href="{url}"' in text for url in urls.values()):
-            text += " " + _anchors(sorted({
-                numbers[str(available[chunk].canonical_url)]
-                for chunk in referenced_chunks(item, evidence)
-            }), urls)
+            text += " " + _anchors(
+                sorted(
+                    {
+                        numbers[str(available[chunk].canonical_url)]
+                        for chunk in referenced_chunks(item, evidence)
+                    }
+                ),
+                urls,
+            )
         paragraphs.append(text)
 
     body = "\n\n".join(paragraphs) or (
@@ -94,6 +102,5 @@ def render_grounded_answer(
 
 def _anchors(numbers: list[int], urls: dict[int, str]) -> str:
     return "".join(
-        f'<a href="{escape(urls[item], quote=True)}">[{item}]</a>'
-        for item in numbers
+        f'<a href="{escape(urls[item], quote=True)}">[{item}]</a>' for item in numbers
     )

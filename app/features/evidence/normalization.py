@@ -1,28 +1,25 @@
 import re
 from collections import Counter
 
-
 LABEL = r"(?:[^\[\]\n]|\[[^\[\]\n]*\])*"
 IMAGE = re.compile(rf"!\[{LABEL}\]\((?:[^()\n]|\([^()\n]*\))*\)")
 LINK = re.compile(rf"\[({LABEL})\]\((?:[^()\n]|\([^()\n]*\))*\)")
 REFERENCE_LINK = re.compile(r"\[([^\]\n]+)\]\[[^\]\n]*\]")
-AUTOLINK = re.compile(r"<https?://[^>\s]+>", re.I)
-BARE_URL = re.compile(r"https?://[^\s)>]+", re.I)
-WWW_URL = re.compile(r"\bwww\.[^\s)>]+", re.I)
+AUTOLINK = re.compile(r"<https?://[^>\s]+>", re.IGNORECASE)
+BARE_URL = re.compile(r"https?://[^\s)>]+", re.IGNORECASE)
+WWW_URL = re.compile(r"\bwww\.[^\s)>]+", re.IGNORECASE)
 LINK_ONLY = re.compile(
     rf"^\s*(?:[-*+]\s+)?\[{LABEL}\]\((?:[^()\n]|\([^()\n]*\))*\)\s*$"
 )
-NAV_LINKS = re.compile(
-    r"^\s*(?:\[[^\]\n]+\]\([^\n]+?\)\s*[|•-]?\s*){2,}$"
-)
+NAV_LINKS = re.compile(r"^\s*(?:\[[^\]\n]+\]\([^\n]+?\)\s*[|•-]?\s*){2,}$")
 CHECKBOX = re.compile(r"^\s*[-*+]\s+\[[ xX]\]")
 ORPHAN_LINK = re.compile(r"^\s*\]\([^\n)]*\)\s*")
 MARKUP_ONLY = re.compile(r"^[\s*_~`#>|:.-]+$")
 FILE_DOWNLOAD = re.compile(
     r"\[(?:PDF\s*-\s*)?[<>]?\s*\d+(?:\.\d+)?\s*(?:KB|MB|GB)\]\s*$",
-    re.I,
+    re.IGNORECASE,
 )
-CONTENTS = re.compile(r"(?:table of )?contents", re.I)
+CONTENTS = re.compile(r"(?:table of )?contents", re.IGNORECASE)
 ORDERED_ENTRY = re.compile(r"^\s*\d+[.)]\s+\S")
 SPACED_HEADER = re.compile(r"(?:\b[A-Z]\s+){5,}[A-Z]\b")
 EMAIL = re.compile(r"\b[^\s@]+@[^\s@]+\.[^\s@]+\b")
@@ -38,7 +35,7 @@ FIGURE = re.compile(
     r"\$\s*\d|\d\s*(?:%|percent|million|billion|trillion)|\d+\.\d"
     r"|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d"
     r"|\d{1,2}/\d{1,2}/\d",
-    re.I,
+    re.IGNORECASE,
 )
 MINIMUM_PROSE_WORDS = 80
 DEFINITION_LABELS = {"audiences", "categories", "download", "program", "written by"}
@@ -169,10 +166,7 @@ def normalize_markdown(content: str, *, title: str | None = None) -> str:
                 lines.append("")
             continue
         semantic = line.strip("#*_ -").casefold()
-        if any(
-            len(value) >= 20 and semantic == value
-            for value in title_labels
-        ):
+        if any(len(value) >= 20 and semantic == value for value in title_labels):
             continue
         if normalized == previous or semantic == previous:
             continue
@@ -182,10 +176,13 @@ def normalize_markdown(content: str, *, title: str | None = None) -> str:
 
 
 def has_substance(content: str) -> bool:
-    return sum(
-        len(WORD.findall(match.group()))
-        for match in PROSE_SENTENCE.finditer(content)
-    ) >= MINIMUM_PROSE_WORDS
+    return (
+        sum(
+            len(WORD.findall(match.group()))
+            for match in PROSE_SENTENCE.finditer(content)
+        )
+        >= MINIMUM_PROSE_WORDS
+    )
 
 
 def _strip_navigation(lines: list[str]) -> list[str]:
@@ -196,9 +193,11 @@ def _strip_navigation(lines: list[str]) -> list[str]:
             block.append(line)
             continue
         if block:
-            retained = [
-                item for item in block if item.startswith("#")
-            ] if _navigation(block) else block
+            retained = (
+                [item for item in block if item.startswith("#")]
+                if _navigation(block)
+                else block
+            )
             kept.extend(retained)
             if retained:
                 kept.append("")
@@ -232,9 +231,7 @@ def _clean_blocks(lines: list[str]) -> str:
         if sum(len(EMAIL.findall(line)) for line in block) >= 2:
             continue
         citations = sum(_citation_line(line) for line in block)
-        reference_numbers = sum(
-            len(NUMBERED_CITATIONS.findall(line)) for line in block
-        )
+        reference_numbers = sum(len(NUMBERED_CITATIONS.findall(line)) for line in block)
         if max(citations, reference_numbers) >= 2 and citations / len(block) >= 0.6:
             continue
         cleaned.append(

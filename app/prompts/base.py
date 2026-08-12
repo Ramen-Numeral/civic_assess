@@ -41,16 +41,12 @@ class Prompt(BaseModel):
 
         missing = expected - provided
         if missing:
-            raise ValueError(
-                f"Missing prompt values: {', '.join(sorted(missing))}"
-            )
+            raise ValueError(f"Missing prompt values: {', '.join(sorted(missing))}")
 
         try:
             return self.template.format(**values)
         except (KeyError, ValueError, IndexError) as exc:
-            raise ValueError(
-                f"Could not render prompt '{self.name}': {exc}"
-            ) from exc
+            raise ValueError(f"Could not render prompt '{self.name}': {exc}") from exc
 
     def placeholders(self) -> set[str]:
         """Return placeholders declared in the template."""

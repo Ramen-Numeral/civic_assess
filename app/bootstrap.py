@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 
-from config.settings import Settings, load_application_config
 from app.application import ChatInteractionService
 from app.features.answer_synthesis import AnswerSynthesisService
 from app.features.conversation import (
@@ -9,7 +8,6 @@ from app.features.conversation import (
     ConversationStateCoordinator,
     ConversationStateService,
 )
-from app.features.input_validation.service import InputValidationService
 from app.features.evidence import (
     EvidenceCoverageService,
     EvidenceIngestionService,
@@ -17,6 +15,7 @@ from app.features.evidence import (
 )
 from app.features.evidence.chunking import MarkdownChunker
 from app.features.evidence.embedding import EvidenceEmbedder
+from app.features.input_validation.service import InputValidationService
 from app.features.query_diversification.service import QueryDiversificationService
 from app.features.query_reframe.service import QueryReframeService
 from app.features.query_resolution.service import QueryResolutionService
@@ -28,16 +27,16 @@ from app.infrastructure.persistence import (
     SQLiteEvidenceRepository,
 )
 from app.infrastructure.search import TavilySearchClient
-from app.observability.logging import configure_logging
 from app.observability.llm_usage import LLMUsageReporter
+from app.observability.logging import configure_logging
 from app.observability.progress import ProgressReporter
-from app.orchestration.orchestrator import ChatOrchestrator
 from app.orchestration.answer import AnswerCoordinator
+from app.orchestration.orchestrator import ChatOrchestrator
 from app.orchestration.research import ResearchCoordinator
 from app.prompts.factory import (
-    build_conversation_state_prompt,
     build_answer_audit_prompt,
     build_answer_synthesis_prompt,
+    build_conversation_state_prompt,
     build_evidence_coverage_prompt,
     build_gap_query_planning_prompt,
     build_input_validation_prompt,
@@ -46,6 +45,7 @@ from app.prompts.factory import (
     build_query_resolution_prompt,
 )
 from app.roles import AgentRole
+from config.settings import Settings, load_application_config
 
 
 @dataclass(frozen=True)

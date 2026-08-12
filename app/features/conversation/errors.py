@@ -1,6 +1,5 @@
 from typing import Literal
 
-
 ConversationErrorCode = Literal[
     "unknown_conversation",
     "expired_conversation",

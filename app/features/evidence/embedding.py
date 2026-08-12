@@ -43,11 +43,7 @@ class EvidenceEmbedder:
         offsets = encoded.get("offset_mapping")
         if offsets is None:
             raise ValueError("Embedding tokenizer does not provide offset mappings")
-        return tuple(
-            (int(start), int(end))
-            for start, end in offsets
-            if end > start
-        )
+        return tuple((int(start), int(end)) for start, end in offsets if end > start)
 
     async def embed(self, texts: Sequence[str]) -> tuple[tuple[float, ...], ...]:
         return await asyncio.to_thread(self._embed, list(texts), False)
@@ -57,18 +53,14 @@ class EvidenceEmbedder:
     ) -> tuple[tuple[float, ...], ...]:
         return await asyncio.to_thread(self._embed, list(texts), True)
 
-    def _embed(
-        self, texts: list[str], queries: bool
-    ) -> tuple[tuple[float, ...], ...]:
+    def _embed(self, texts: list[str], queries: bool) -> tuple[tuple[float, ...], ...]:
         model = self._load()
         tokens = model.tokenizer(texts, truncation=False)["input_ids"]
         if any(len(row) > model.max_seq_length for row in tokens):
             raise ValueError("Evidence chunk exceeds the embedding model token limit")
         vectors = tuple(
             tuple(vector)
-            for vector in (
-                model.encode_query if queries else model.encode_document
-            )(
+            for vector in (model.encode_query if queries else model.encode_document)(
                 texts,
                 batch_size=self.batch_size,
                 convert_to_numpy=True,

@@ -9,8 +9,8 @@ from app.features.evidence.models import (
     EvidenceCandidate,
     EvidenceIngestionBatch,
     EvidenceIngestionSnapshot,
-    ScoredEvidenceCandidate,
     EvidenceWriteResult,
+    ScoredEvidenceCandidate,
 )
 from app.features.evidence.repository import EvidenceRepository
 from app.infrastructure.persistence.sqlite import SQLiteDatabase
@@ -231,7 +231,10 @@ class SQLiteEvidenceRepository(EvidenceRepository):
     ) -> int | None:
         return await asyncio.to_thread(
             self._write_embeddings,
-            version, dimension, rows, created_at,
+            version,
+            dimension,
+            rows,
+            created_at,
         )
 
     def _write_embeddings(
@@ -264,7 +267,9 @@ class SQLiteEvidenceRepository(EvidenceRepository):
                 "VALUES (?, ?, ?, ?, ?)",
                 [
                     (
-                        str(chunk_id), version, dimension,
+                        str(chunk_id),
+                        version,
+                        dimension,
                         struct.pack(f"<{dimension}f", *vector),
                         created_at.isoformat(),
                     )
@@ -343,7 +348,7 @@ class SQLiteEvidenceRepository(EvidenceRepository):
             return tuple(
                 (
                     _candidate(row),
-                    struct.unpack(f'<{row["dimension"]}f', row["vector"]),
+                    struct.unpack(f"<{row['dimension']}f", row["vector"]),
                 )
                 for row in rows
             )

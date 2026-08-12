@@ -15,17 +15,27 @@ from app.bootstrap import build_application
 from app.features.input_validation.schemas import InputValidationRequest
 from app.features.input_validation.service import InputValidationService
 from app.features.query_reframe.schemas import QueryReframeRequest
-from app.features.query_reframe.service import QueryReframeService, determine_reframe_mode
+from app.features.query_reframe.service import (
+    QueryReframeService,
+    determine_reframe_mode,
+)
 from app.infrastructure.llm.factory import build_llms
 from app.observability.context import run_context
 from app.observability.llm_usage import LLMAttemptMetrics, LLMUsageReporter
-from app.prompts.factory import build_input_validation_prompt, build_query_reframe_prompts
+from app.prompts.factory import (
+    build_input_validation_prompt,
+    build_query_reframe_prompts,
+)
 from app.roles import AgentRole
 from config.settings import ENV_DIR, Settings, load_application_config
-from evals.models import RequestRoutingCase, RequestRoutingRun, RubricRun
-from evals.models import RubricScenario, ScenarioTurn
+from evals.models import (
+    RequestRoutingCase,
+    RequestRoutingRun,
+    RubricRun,
+    RubricScenario,
+    ScenarioTurn,
+)
 from evals.reporting import write_request_routing_report, write_rubric_report
-
 
 ROOT = Path(__file__).parent
 Model = TypeVar("Model", bound=BaseModel)
@@ -75,26 +85,39 @@ async def _routing(repetitions: int, output: Path) -> None:
         for number in range(1, repetitions + 1):
             run_id, started = str(uuid4()), perf_counter()
             with run_context(run_id):
-                result = await validator.validate(InputValidationRequest(
-                    original_query=case.query,
-                ))
+                result = await validator.validate(
+                    InputValidationRequest(
+                        original_query=case.query,
+                    )
+                )
                 proposal = None
                 if result.disposition.value == "reframe":
-                    proposal = await reframer.reframe(QueryReframeRequest(
-                        original_query=case.query,
-                        resolved_query=result.normalized_query,
-                        analysis=result.analysis,
-                        mode=determine_reframe_mode(result.analysis),
-                    ))
-            runs.append(RequestRoutingRun(
-                case, result, number, _elapsed(started), usage.for_run(run_id), proposal
-            ))
+                    proposal = await reframer.reframe(
+                        QueryReframeRequest(
+                            original_query=case.query,
+                            resolved_query=result.normalized_query,
+                            analysis=result.analysis,
+                            mode=determine_reframe_mode(result.analysis),
+                        )
+                    )
+            runs.append(
+                RequestRoutingRun(
+                    case,
+                    result,
+                    number,
+                    _elapsed(started),
+                    usage.for_run(run_id),
+                    proposal,
+                )
+            )
     write_request_routing_report(tuple(runs), output)
     print(f"Wrote {len(runs)} routing results to {output / 'request_routing.md'}")
 
 
 async def _scenarios(
-    repetitions: int, output: Path, case_ids: list[str] | None,
+    repetitions: int,
+    output: Path,
+    case_ids: list[str] | None,
 ) -> None:
     cases = _load(ROOT / "cases" / "rubric_scenarios.json", RubricScenario)
     if case_ids:
@@ -107,9 +130,11 @@ async def _scenarios(
     if settings.tavily_api_key is None:
         raise RuntimeError("TAVILY_API_KEY is required for scenario evaluations")
     with TemporaryDirectory(prefix="civic-evals-") as directory:
-        settings = settings.model_copy(update={
-            "sqlite_database_path": Path(directory) / "evals.sqlite3",
-        })
+        settings = settings.model_copy(
+            update={
+                "sqlite_database_path": Path(directory) / "evals.sqlite3",
+            }
+        )
         application = build_application(settings, llm_usage_reporter=usage)
         for case in cases:
             for number in range(1, repetitions + 1):
@@ -126,18 +151,32 @@ async def _scenarios(
                                     message=query,
                                 )
                             )
-                            turns.append(ScenarioTurn(
-                                query, expectation, result, _elapsed(turn_started)
-                            ))
+                            turns.append(
+                                ScenarioTurn(
+                                    query, expectation, result, _elapsed(turn_started)
+                                )
+                            )
                         except Exception as exc:
-                            turns.append(ScenarioTurn(
-                                query, expectation, None, _elapsed(turn_started),
-                                type(exc).__name__, str(exc),
-                                getattr(exc, "workflow_state", None),
-                            ))
-                runs.append(RubricRun(
-                    case, tuple(turns), number, _elapsed(started), usage.for_run(run_id)
-                ))
+                            turns.append(
+                                ScenarioTurn(
+                                    query,
+                                    expectation,
+                                    None,
+                                    _elapsed(turn_started),
+                                    type(exc).__name__,
+                                    str(exc),
+                                    getattr(exc, "workflow_state", None),
+                                )
+                            )
+                runs.append(
+                    RubricRun(
+                        case,
+                        tuple(turns),
+                        number,
+                        _elapsed(started),
+                        usage.for_run(run_id),
+                    )
+                )
     write_rubric_report(tuple(runs), output)
     print(f"Wrote {len(runs)} scenario results to {output / 'rubric_scenarios.md'}")
 

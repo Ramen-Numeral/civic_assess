@@ -87,11 +87,14 @@ class ConversationService:
         return await self._repository.list_turns(conversation_id)
 
     async def discard_latest_user_turn(
-        self, conversation_id: UUID, turn_id: UUID,
+        self,
+        conversation_id: UUID,
+        turn_id: UUID,
     ) -> bool:
         await self._require_active(conversation_id)
         return await self._repository.discard_latest_user_turn(
-            conversation_id, turn_id,
+            conversation_id,
+            turn_id,
         )
 
     async def _require_active(self, conversation_id: UUID) -> Conversation:

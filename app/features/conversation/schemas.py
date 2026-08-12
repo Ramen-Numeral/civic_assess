@@ -13,7 +13,6 @@ from app.domain.conversation import (
     StoredConversationTurn,
 )
 
-
 StateItem = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=500),

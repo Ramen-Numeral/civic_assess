@@ -10,7 +10,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.observability.context import current_run_id, run_context
 from app.roles import AgentRole
 
-
 ProgressValue = str | int | float | bool | None
 
 

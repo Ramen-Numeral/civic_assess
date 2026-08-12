@@ -8,7 +8,6 @@ from app.roles import AgentRole
 from app.ui import SessionProgressReporter, _authentication, _working_content, build_ui
 from config.settings import Settings
 
-
 pytestmark = pytest.mark.unit
 
 

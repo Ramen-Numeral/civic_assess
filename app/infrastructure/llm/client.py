@@ -23,7 +23,6 @@ from app.observability.llm_usage import (
 from app.roles import AgentRole
 from config.llm import ModelCandidate
 
-
 OutputT = TypeVar("OutputT", bound=BaseModel)
 RouteOutputT = TypeVar("RouteOutputT", bound=AIMessage | BaseModel)
 LOGGER = logging.getLogger(__name__)
@@ -90,9 +89,17 @@ class LLM:
                 parsed = result.get("parsed")
                 if parsed is None:
                     raise ValueError("Structured model returned no parsed result")
-                value = parsed if isinstance(parsed, output_schema) else output_schema.model_validate(parsed)
+                value = (
+                    parsed
+                    if isinstance(parsed, output_schema)
+                    else output_schema.model_validate(parsed)
+                )
                 return _ObservedResult(value, result["raw"])
-            value = result if isinstance(result, output_schema) else output_schema.model_validate(result)
+            value = (
+                result
+                if isinstance(result, output_schema)
+                else output_schema.model_validate(result)
+            )
             return _ObservedResult(value, result)
 
         return await self._invoke_route(call)
@@ -127,7 +134,10 @@ class LLM:
                     ),
                 )
                 self._record(
-                    routed, index, started, "failure",
+                    routed,
+                    index,
+                    started,
+                    "failure",
                     fallback_triggered=fallback and index + 1 < len(self.models),
                     error_code=failure.kind.value,
                 )
@@ -145,7 +155,9 @@ class LLM:
                             "role": self.role.value,
                             "from_provider": routed.candidate.provider.value,
                             "from_model": routed.candidate.model,
-                            "to_provider": self.models[index + 1].candidate.provider.value,
+                            "to_provider": self.models[
+                                index + 1
+                            ].candidate.provider.value,
                             "to_model": self.models[index + 1].candidate.model,
                             "failure_kind": failure.kind.value,
                         },
@@ -186,26 +198,33 @@ class LLM:
         input_tokens = metadata.get("input_tokens")
         output_tokens = metadata.get("output_tokens")
         total_tokens = metadata.get("total_tokens")
-        self._usage.record(LLMAttemptMetrics(
-            role=self.role,
-            provider=routed.candidate.provider.value,
-            model=routed.candidate.model,
-            candidate_index=index,
-            duration_ms=round((monotonic() - started) * 1000, 2),
-            outcome=outcome,
-            fallback_triggered=fallback_triggered,
-            error_code=error_code,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            total_tokens=total_tokens,
-            token_source=(
-                TokenSource.PROVIDER_REPORTED
-                if total_tokens is not None else TokenSource.UNAVAILABLE
-            ),
-        ))
+        self._usage.record(
+            LLMAttemptMetrics(
+                role=self.role,
+                provider=routed.candidate.provider.value,
+                model=routed.candidate.model,
+                candidate_index=index,
+                duration_ms=round((monotonic() - started) * 1000, 2),
+                outcome=outcome,
+                fallback_triggered=fallback_triggered,
+                error_code=error_code,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=total_tokens,
+                token_source=(
+                    TokenSource.PROVIDER_REPORTED
+                    if total_tokens is not None
+                    else TokenSource.UNAVAILABLE
+                ),
+            )
+        )
 
     def _attempt_fields(
-        self, routed: RoutedModel, index: int, started: float, **fields: object,
+        self,
+        routed: RoutedModel,
+        index: int,
+        started: float,
+        **fields: object,
     ) -> dict[str, object]:
         return {
             "event": "llm.attempt.completed",

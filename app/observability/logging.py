@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 
 from app.observability.context import current_run_id
 
-
 STANDARD_FIELDS = frozenset(logging.makeLogRecord({}).__dict__)
 HANDLER_NAME = "civic_assess"
 QUIET_LOGGERS = ("anthropic", "asyncio", "groq", "httpcore", "httpx", "openai")
@@ -19,11 +18,13 @@ class JsonFormatter(logging.Formatter):
             "logger": record.name,
             "message": record.getMessage(),
         }
-        payload.update({
-            key: value
-            for key, value in record.__dict__.items()
-            if key not in STANDARD_FIELDS
-        })
+        payload.update(
+            {
+                key: value
+                for key, value in record.__dict__.items()
+                if key not in STANDARD_FIELDS
+            }
+        )
         if run_id := current_run_id():
             payload["run_id"] = run_id
         if record.exc_info:

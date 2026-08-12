@@ -8,9 +8,9 @@ from app.observability.progress import (
     ProgressEmitter,
     ProgressReporter,
 )
+from app.orchestration.answer import AnswerCoordinator
 from app.orchestration.graph import build_chat_graph
 from app.orchestration.research import ResearchCoordinator
-from app.orchestration.answer import AnswerCoordinator
 from app.orchestration.state import ChatState
 
 

@@ -25,9 +25,8 @@ from app.infrastructure.llm.client import LLMClient
 from app.infrastructure.llm.errors import FailureKind, LLMError
 from app.prompts.base import Prompt
 
-
 NUMBER = re.compile(r"(?<!\w)\$?\d[\d,.]*(?:%|st|nd|rd|th)?(?!\w)")
-URL_OR_MARKDOWN_LINK = re.compile(r"https?://|www\.|\[[^\]]+\]\([^)]+\)", re.I)
+URL_OR_MARKDOWN_LINK = re.compile(r"https?://|www\.|\[[^\]]+\]\([^)]+\)", re.IGNORECASE)
 LOGGER = logging.getLogger(__name__)
 RESOLUTION_REPAIR_ATTEMPTS = 2
 CLARIFICATION_FALLBACK = (
@@ -135,12 +134,16 @@ class QueryResolutionService:
                         "invariant": str(exc),
                     },
                 )
-                messages.append(SystemMessage(content=(
-                    "Your previous response violated this output invariant: "
-                    f"{exc}. Return a corrected result using only the supplied "
-                    "query and context. Evidence references must use the supplied "
-                    "source IDs."
-                )))
+                messages.append(
+                    SystemMessage(
+                        content=(
+                            "Your previous response violated this output invariant: "
+                            f"{exc}. Return a corrected result using only the supplied "
+                            "query and context. Evidence references must use the supplied "
+                            "source IDs."
+                        )
+                    )
+                )
                 continue
             return result
         raise AssertionError("Query resolution attempts exhausted")
@@ -184,10 +187,7 @@ class QueryResolutionService:
                 if source is not None:
                     evidence_text.append(source.content)
             else:
-                valid = (
-                    state is not None
-                    and evidence.source_id == state.state_id
-                )
+                valid = state is not None and evidence.source_id == state.state_id
                 if valid:
                     evidence_text.extend(state_evidence_text)
             if not valid:
@@ -204,9 +204,8 @@ class QueryResolutionService:
         allowed_numbers = _numbers(" ".join([normalized_query, *evidence_text]))
         if not _numbers(output) <= allowed_numbers:
             raise ValueError("Resolution introduced an unsupported number")
-        if (
-            result.clarification_question is not None
-            and URL_OR_MARKDOWN_LINK.search(result.clarification_question)
+        if result.clarification_question is not None and URL_OR_MARKDOWN_LINK.search(
+            result.clarification_question
         ):
             raise ValueError("Clarification must not contain links")
 

@@ -9,8 +9,8 @@ from app.domain.research import (
     QueryAcquisitionOutcome,
     QueryAcquisitionSuccess,
     ResearchAcquisitionSet,
+    ResearchQuerySet,
 )
-from app.domain.research import ResearchQuerySet
 from app.features.research_acquisition.client import (
     SearchClient,
     SearchClientError,
@@ -40,14 +40,12 @@ class ResearchAcquisitionService:
         if len(queries) > 6:
             raise ValueError("acquisition accepts at most six research queries")
         outcomes = tuple(
-            await asyncio.gather(*(
-                self._acquire_query(query.query_id, query.text)
-                for query in queries
-            ))
+            await asyncio.gather(
+                *(self._acquire_query(query.query_id, query.text) for query in queries)
+            )
         )
         if not any(
-            isinstance(outcome, QueryAcquisitionSuccess)
-            for outcome in outcomes
+            isinstance(outcome, QueryAcquisitionSuccess) for outcome in outcomes
         ):
             raise ResearchAcquisitionError(
                 "acquisition_unavailable",
@@ -94,7 +92,7 @@ class ResearchAcquisitionService:
                     provider_result_id=result.provider_result_id,
                 )
                 for rank, result in enumerate(
-                    response.results[:self._results_per_query],
+                    response.results[: self._results_per_query],
                     start=1,
                 )
             ),

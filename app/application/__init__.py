@@ -3,5 +3,4 @@ from app.application.chat_interaction import (
     ChatInteractionService,
 )
 
-
 __all__ = ["ChatInteractionRequest", "ChatInteractionService"]

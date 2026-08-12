@@ -5,13 +5,13 @@ from uuid import UUID
 
 from app.domain.research import ResearchQuerySet
 from app.features.evidence.embedding import EvidenceEmbedder
-from app.features.evidence.repository import EvidenceRepository
 from app.features.evidence.models import (
     EvidenceRetrievalSet,
     QueryEvidenceRetrieval,
     ScoredEvidenceCandidate,
 )
 from app.features.evidence.ranking import finalize_candidates
+from app.features.evidence.repository import EvidenceRepository
 
 
 class EvidenceRetrievalService:
@@ -28,14 +28,24 @@ class EvidenceRetrievalService:
         coverage_candidate_count: int = 12,
         max_chunks_per_document: int = 2,
     ) -> None:
-        if any(value < 1 for value in (
-            lexical_candidate_count, semantic_candidate_count, rrf_k,
-            coverage_candidate_count, max_chunks_per_document,
-        )):
+        if any(
+            value < 1
+            for value in (
+                lexical_candidate_count,
+                semantic_candidate_count,
+                rrf_k,
+                coverage_candidate_count,
+                max_chunks_per_document,
+            )
+        ):
             raise ValueError("Evidence retrieval counts must be positive")
-        if any(not math.isfinite(value) or value < 0 for value in (
-            lexical_weight, semantic_weight,
-        )) or not (lexical_weight or semantic_weight):
+        if any(
+            not math.isfinite(value) or value < 0
+            for value in (
+                lexical_weight,
+                semantic_weight,
+            )
+        ) or not (lexical_weight or semantic_weight):
             raise ValueError("At least one finite retrieval weight must be positive")
         self._repository = repository
         self._embedder = embedder
@@ -53,11 +63,13 @@ class EvidenceRetrievalService:
         conversation_id: UUID,
         query_set: ResearchQuerySet,
     ) -> EvidenceRetrievalSet:
-        requirement_count = len({
-            requirement_id
-            for query in query_set.diversified_queries
-            for requirement_id in query.requirement_ids
-        })
+        requirement_count = len(
+            {
+                requirement_id
+                for query in query_set.diversified_queries
+                for requirement_id in query.requirement_ids
+            }
+        )
         if requirement_count > self._coverage_count:
             raise ValueError(
                 "Coverage candidate count cannot represent every requirement"
@@ -71,12 +83,14 @@ class EvidenceRetrievalService:
         for query, lexical, semantic in zip(
             queries, lexical_results, semantic_results, strict=True
         ):
-            results.append(QueryEvidenceRetrieval(
-                query_id=query.query_id,
-                query_text=query.text,
-                lexical=lexical,
-                semantic=semantic,
-            ))
+            results.append(
+                QueryEvidenceRetrieval(
+                    query_id=query.query_id,
+                    query_text=query.text,
+                    lexical=lexical,
+                    semantic=semantic,
+                )
+            )
         query_results = tuple(results)
         return EvidenceRetrievalSet(
             conversation_id=conversation_id,
@@ -101,12 +115,14 @@ class EvidenceRetrievalService:
     async def _lexical(self, conversation_id, queries):
         if not self._lexical_weight:
             return ((),) * len(queries)
-        return await asyncio.gather(*(
-            self._repository.search_evidence_text(
-                conversation_id, query.text, self._lexical_count
+        return await asyncio.gather(
+            *(
+                self._repository.search_evidence_text(
+                    conversation_id, query.text, self._lexical_count
+                )
+                for query in queries
             )
-            for query in queries
-        ))
+        )
 
     async def _semantic(self, conversation_id, queries):
         if not self._semantic_weight:
@@ -116,9 +132,7 @@ class EvidenceRetrievalService:
         )
         if not corpus:
             return ((),) * len(queries)
-        vectors = await self._embedder.embed_queries(
-            [query.text for query in queries]
-        )
+        vectors = await self._embedder.embed_queries([query.text for query in queries])
         return tuple(
             tuple(
                 ScoredEvidenceCandidate(

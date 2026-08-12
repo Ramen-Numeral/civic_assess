@@ -4,19 +4,24 @@ from uuid import uuid4
 import pytest
 
 from app.domain.conversation import (
-    ConversationContext, ConversationContextStatus, ConversationRole,
+    ConversationContext,
+    ConversationContextStatus,
+    ConversationRole,
     ConversationTurn,
 )
 from app.domain.validation import (
-    BehaviorAssessment, Disposition, InputGateAnalysis, InputGateResult,
-    InstructionIntegrityAssessment, ScopeAssessment,
+    BehaviorAssessment,
+    Disposition,
+    InputGateAnalysis,
+    InputGateResult,
+    InstructionIntegrityAssessment,
+    ScopeAssessment,
 )
 from app.features.input_validation.schemas import InputValidationRequest
 from app.features.query_reframe.schemas import QueryReframeMode, QueryReframeProposal
 from app.features.query_resolution.schemas import QueryResolutionResult
 from app.orchestration.orchestrator import ChatOrchestrator
 from app.orchestration.state import ChatRoute
-
 
 pytestmark = [pytest.mark.e2e, pytest.mark.smoke]
 
@@ -25,9 +30,11 @@ def gate(disposition: Disposition, *, behavior=BehaviorAssessment.ALLOWED):
     return InputGateResult(
         analysis=InputGateAnalysis(
             instruction_integrity=InstructionIntegrityAssessment.NONE,
-            scope=ScopeAssessment.IN_SCOPE, behavior=behavior,
+            scope=ScopeAssessment.IN_SCOPE,
+            behavior=behavior,
         ),
-        disposition=disposition, normalized_query="original query",
+        disposition=disposition,
+        normalized_query="original query",
     )
 
 
@@ -54,16 +61,21 @@ class Resolver:
 
 
 def invoke(validator, reframer):
-    return asyncio.run(ChatOrchestrator(validator, reframer, Resolver()).invoke(
-        InputValidationRequest(original_query="original query"),
-        conversation_context=ConversationContext(
-            conversation_id=uuid4(), current_turn_id=uuid4(),
-            status=ConversationContextStatus.RECENT_ONLY,
-        ),
-    ))
+    return asyncio.run(
+        ChatOrchestrator(validator, reframer, Resolver()).invoke(
+            InputValidationRequest(original_query="original query"),
+            conversation_context=ConversationContext(
+                conversation_id=uuid4(),
+                current_turn_id=uuid4(),
+                status=ConversationContextStatus.RECENT_ONLY,
+            ),
+        )
+    )
 
 
-@pytest.mark.parametrize("disposition", [Disposition.ALLOW, Disposition.REDIRECT, Disposition.REFUSE])
+@pytest.mark.parametrize(
+    "disposition", [Disposition.ALLOW, Disposition.REDIRECT, Disposition.REFUSE]
+)
 def test_terminal_gate_dispositions_do_not_reframe(disposition) -> None:
     reframer = Reframer()
     state = invoke(Validator(gate(disposition)), reframer)
@@ -74,13 +86,20 @@ def test_terminal_gate_dispositions_do_not_reframe(disposition) -> None:
 @pytest.mark.regression
 def test_neutral_reframe_is_revalidated_and_awaits_approval() -> None:
     reframer = Reframer()
-    state = invoke(Validator(
-        gate(Disposition.REFRAME, behavior=BehaviorAssessment.REQUIRES_NEUTRAL_REFRAME),
-        InputGateResult(
-            analysis=gate(Disposition.ALLOW).analysis,
-            disposition=Disposition.ALLOW, normalized_query="neutral query",
+    state = invoke(
+        Validator(
+            gate(
+                Disposition.REFRAME,
+                behavior=BehaviorAssessment.REQUIRES_NEUTRAL_REFRAME,
+            ),
+            InputGateResult(
+                analysis=gate(Disposition.ALLOW).analysis,
+                disposition=Disposition.ALLOW,
+                normalized_query="neutral query",
+            ),
         ),
-    ), reframer)
+        reframer,
+    )
 
     assert reframer.mode is QueryReframeMode.NEUTRAL
     assert state["proposal_gate_result"].disposition is Disposition.ALLOW
@@ -120,16 +139,27 @@ def test_resolved_follow_up_preserves_original_for_safety_validation() -> None:
             return QueryResolutionResult(resolved_query=resolved)
 
     context = ConversationContext(
-        conversation_id=uuid4(), current_turn_id=uuid4(),
-        recent_turns=(ConversationTurn(
-            turn_id=uuid4(), role=ConversationRole.ASSISTANT,
-            content="J. Edgar Hoover led the FBI.",
-        ),),
+        conversation_id=uuid4(),
+        current_turn_id=uuid4(),
+        recent_turns=(
+            ConversationTurn(
+                turn_id=uuid4(),
+                role=ConversationRole.ASSISTANT,
+                content="J. Edgar Hoover led the FBI.",
+            ),
+        ),
         status=ConversationContextStatus.RECENT_ONLY,
     )
-    state = asyncio.run(ChatOrchestrator(
-        validator, Reframer(), ContextResolver(),
-    ).invoke(InputValidationRequest(original_query=original), conversation_context=context))
+    state = asyncio.run(
+        ChatOrchestrator(
+            validator,
+            Reframer(),
+            ContextResolver(),
+        ).invoke(
+            InputValidationRequest(original_query=original),
+            conversation_context=context,
+        )
+    )
 
     assert requests[0].original_query == original
     assert requests[0].resolved_query == resolved
