@@ -138,31 +138,54 @@ def _evidence_note(
     degraded: bool,
 ) -> str:
     if degraded or not draft.paragraphs:
-        return "The available evidence could not support a reliable answer."
+        return (
+            "**Limited — Insufficient evidence**\n\nAvailable evidence was not "
+            "sufficient to provide a complete, well-supported answer."
+        )
     if audit is None:
-        return "The answer could not receive a final evidence audit."
+        return (
+            "**Limited — Review incomplete**\n\nThe evidence check couldn't be "
+            "completed, so the overall strength of support remains uncertain."
+        )
     findings = [
         request.findings[index]
         for index in {index for item in draft.paragraphs for index in item.finding_indexes}
     ]
-    sources = cited_sources(draft, request.evidence)
-    if min(audit.paragraph_support.values()) <= 3:
-        strength = "The cited sources only partially establish this answer"
-    elif any(item.evidence_basis == "projected" for item in findings):
-        strength = (
-            "The cited sources support this answer, except where it describes "
-            "projections rather than measured outcomes"
+    support = min(audit.paragraph_support.values(), default=0)
+    if min(support, audit.answer_quality) <= 3:
+        return (
+            "**Limited — Unsupported claims**\n\nSome parts are supported, but key "
+            "claims could not be fully supported by the available evidence."
         )
-    elif any(item.source_fitness == "qualified" for item in findings):
-        strength = "The cited sources support this answer within the limitations noted"
-    else:
-        strength = "The cited sources directly document this answer"
-    plural = "" if len(sources) == 1 else "s"
-    parts = [f"{strength}, drawn from {len(sources)} source{plural}.", audit.evidence_note]
     if request.unresolved:
-        gaps = "; ".join(item.rstrip(".") for item in request.unresolved)
-        parts.append(f"The available evidence did not establish: {gaps}.")
-    return " ".join(parts)
+        return (
+            "**Moderate — Unresolved details**\n\nCore claims are supported, but "
+            "part of your question remains unanswered."
+        )
+    if any(item.evidence_basis == "projected" for item in findings):
+        return (
+            "**Moderate — Based on forecasts**\n\nCore claims are supported, but "
+            "some conclusions rely on projected rather than documented outcomes."
+        )
+    if any(item.source_fitness == "qualified" for item in findings):
+        return (
+            "**Moderate — Evidence caveats**\n\nCore claims are supported, but "
+            "some supporting evidence has limitations to keep in mind."
+        )
+    if len(cited_sources(draft, request.evidence)) < 2:
+        return (
+            "**Moderate — Single source**\n\nCore claims are supported, but rely "
+            "on a single source without confirmation from another source."
+        )
+    if min(support, audit.answer_quality) < 5:
+        return (
+            "**Moderate — Minor gaps**\n\nCore claims are supported, though the "
+            "final check identified minor gaps or qualifications."
+        )
+    return (
+        "**Strong — Well-supported**\n\nMain claims are backed by multiple cited "
+        "sources, with no material gaps or reliance on projected outcomes."
+    )
 
 
 def _elapsed(started: float) -> float:

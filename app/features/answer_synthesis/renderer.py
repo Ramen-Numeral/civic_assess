@@ -74,17 +74,21 @@ def render_grounded_answer(
     body = "\n\n".join(paragraphs) or (
         "The approved evidence did not support a sufficiently grounded answer."
     )
-    sections = []
+    answer = ["## Answer"]
     if validation_warning:
-        sections.append(f"> **Validation warning:** {validation_warning}")
-    sections.extend([body, f"About this answer: {evidence_note}"])
+        answer.append(f"> **Validation warning:** {validation_warning}")
+    answer.append(body)
+    sections = ["\n\n".join(answer), f"## Evidence Strength\n\n{evidence_note}"]
     if cited:
         entries = [
             f'<div id="source-{index}">[{index}] '
             f'<a href="{source.canonical_url}">{escape(source.title)}</a></div>'
             for index, (source, _) in enumerate(cited, 1)
         ]
-        sections.append("Sources\n\n" + "\n".join(entries))
+        sources_section = "\n".join(entries)
+    else:
+        sources_section = "No sources were cited."
+    sections.append("## Sources\n\n" + sources_section)
     return "\n\n".join(sections)
 
 
